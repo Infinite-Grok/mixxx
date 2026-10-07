@@ -265,7 +265,9 @@ function(fatal_error_missing_env)
   endif()
 endfunction()
 
-if(UNIX AND NOT APPLE)
+# A2 candidate: this guard stops WSL builds that TARGET Windows. An Android
+# cross-build from WSL is a Linux-host build and is unaffected by it.
+if(UNIX AND NOT APPLE AND NOT ANDROID)
   execute_process(
     COMMAND uname -r
     OUTPUT_VARIABLE UNAME_R
@@ -2402,7 +2404,7 @@ if(QT6)
     set_property(TARGET mixxx-lib PROPERTY ANDROID_ABIS "arm64-v8a")
     target_compile_definitions(
       mixxx-lib
-      PUBLIC ANDROID_PACKAGE_NAME="org.mixxx"
+      PUBLIC ANDROID_PACKAGE_NAME="org.mixxx.a2candidate"
     )
     qt_add_executable(mixxx src/main.cpp MANUAL_FINALIZATION)
     set_property(
@@ -2411,7 +2413,9 @@ if(QT6)
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/packaging/android"
     )
     set_target_properties(mixxx PROPERTIES QT_ANDROID_ABIS "${ANDROID_ABI}")
-    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "org.mixxx")
+    # A2 candidate: separate application id/data namespace from org.mixxx and
+    # org.mixxx.t7port so installed builds are never replaced.
+    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "org.mixxx.a2candidate")
     set_target_properties(
       mixxx
       PROPERTIES QT_ANDROID_VERSION_NAME "${MIXXX_VERSION}"
