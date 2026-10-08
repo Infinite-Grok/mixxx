@@ -2404,7 +2404,7 @@ if(QT6)
     set_property(TARGET mixxx-lib PROPERTY ANDROID_ABIS "arm64-v8a")
     target_compile_definitions(
       mixxx-lib
-      PUBLIC ANDROID_PACKAGE_NAME="org.mixxx.a2candidate"
+      PUBLIC ANDROID_PACKAGE_NAME="org.mixxx.a4libremidi"
     )
     qt_add_executable(mixxx src/main.cpp MANUAL_FINALIZATION)
     set_property(
@@ -2415,7 +2415,7 @@ if(QT6)
     set_target_properties(mixxx PROPERTIES QT_ANDROID_ABIS "${ANDROID_ABI}")
     # A2 candidate: separate application id/data namespace from org.mixxx and
     # org.mixxx.t7port so installed builds are never replaced.
-    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "org.mixxx.a2candidate")
+    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "org.mixxx.a4libremidi")
     set_target_properties(
       mixxx
       PROPERTIES QT_ANDROID_VERSION_NAME "${MIXXX_VERSION}"
