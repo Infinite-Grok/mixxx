@@ -130,7 +130,13 @@ QmlApplication::QmlApplication(
 
 #if defined(Q_OS_ANDROID)
     if (canWriteToExternalStorage()) {
-        const QString externalQmlDir = QStringLiteral("/storage/emulated/0/Mixxx/qml");
+        // Package-specific directory: a shared "/storage/emulated/0/Mixxx/qml"
+        // would be overwritten by every other Mixxx build installed on the
+        // device (org.mixxx, org.mixxx.t7port, ...), each loading main.qml
+        // from the other's files.
+        const QString externalQmlDir =
+                QStringLiteral("/storage/emulated/0/Mixxx-%1/qml")
+                        .arg(QStringLiteral(ANDROID_PACKAGE_NAME));
         copyAssetDir(QStringLiteral("assets:/qml"), externalQmlDir);
         m_mainFilePath = externalQmlDir + QStringLiteral("/main.qml");
     }
