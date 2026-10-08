@@ -97,6 +97,13 @@ struct context
   static std::string port_name(JNIEnv* env, unsigned int port_number);
   static void cleanup_devices(JNIEnv* env);
 
+  //! Remembers the Java MidiDevice (global ref, taken over) behind an AMidiDevice, called when
+  //! the device arrives from Java. It is kept alive, and closed by release_device().
+  static void remember_java_device(AMidiDevice* device, jobject java_device_global_ref);
+  //! AMidiDevice_release(), then MidiDevice.close() on the Java object that backs it
+  //! (AMidiDevice_release alone leaves the framework connection open until garbage collection).
+  static void release_device(AMidiDevice* device);
+
   //! All devices known to MidiManager.getDevices(), in the same order refresh_midi_devices()
   //! walks them. Does not touch midi_devices, so it is safe from any thread.
   static std::vector<device_event> list_devices(JNIEnv* env, jobject context);
@@ -179,7 +186,7 @@ struct context
       {
         // The port was closed or destroyed while the device was opening.
         if (device)
-          AMidiDevice_release(device);
+          release_device(device);
         return;
       }
       on_error = it->second.on_error;

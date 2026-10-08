@@ -40,12 +40,15 @@ jobject context::get_context(JNIEnv* env)
   if (!at)
   {
     LOGE("Failed to get ActivityThread");
+    env->DeleteLocalRef(activity_thread);
     return nullptr;
   }
 
   auto get_application
       = env->GetMethodID(activity_thread, "getApplication", "()Landroid/app/Application;");
   auto app = env->CallObjectMethod(at, get_application);
+  env->DeleteLocalRef(at);
+  env->DeleteLocalRef(activity_thread);
 
   if (!app)
   {
@@ -197,6 +200,47 @@ void context::cleanup_devices(JNIEnv* env)
   midi_device_ids.clear();
 }
 
+namespace
+{
+std::mutex g_java_devices_mutex;
+std::unordered_map<AMidiDevice*, jobject> g_java_devices; // global refs
+}
+
+void context::remember_java_device(AMidiDevice* device, jobject java_device_global_ref)
+{
+  std::lock_guard l{g_java_devices_mutex};
+  g_java_devices[device] = java_device_global_ref;
+}
+
+void context::release_device(AMidiDevice* device)
+{
+  jobject java_device = nullptr;
+  {
+    std::lock_guard l{g_java_devices_mutex};
+    if (auto it = g_java_devices.find(device); it != g_java_devices.end())
+    {
+      java_device = it->second;
+      g_java_devices.erase(it);
+    }
+  }
+  AMidiDevice_release(device);
+  if (!java_device)
+    return;
+
+  if (auto env = get_thread_env())
+  {
+    auto device_class = env->FindClass("android/media/midi/MidiDevice");
+    auto close_method = device_class ? env->GetMethodID(device_class, "close", "()V") : nullptr;
+    if (close_method)
+      env->CallVoidMethod(java_device, close_method);
+    if (env->ExceptionCheck())
+      env->ExceptionClear(); // IOException
+    if (device_class)
+      env->DeleteLocalRef(device_class);
+    env->DeleteGlobalRef(java_device);
+  }
+}
+
 jclass context::find_app_class(JNIEnv* env, jobject ctx, const char* dotted_name)
 {
   jclass result = nullptr;
@@ -256,9 +300,12 @@ bool context::open_device(jobject device_info, void* cookie, bool is_output)
 
   auto midi_mgr = get_midi_manager(env, ctx);
   if (!midi_mgr)
+  {
+    env->DeleteLocalRef(ctx);
     return false;
+  }
 
-  // Check if we're on the main thread
+  // Check if we are on a thread with a Looper
   auto looper_class = env->FindClass("android/os/Looper");
   auto get_my_looper_method
       = env->GetStaticMethodID(looper_class, "myLooper", "()Landroid/os/Looper;");
@@ -276,6 +323,7 @@ bool context::open_device(jobject device_info, void* cookie, bool is_output)
     auto handler_ctor = env->GetMethodID(handler_class, "<init>", "(Landroid/os/Looper;)V");
     handler = env->NewObject(handler_class, handler_ctor, main_looper);
 
+    env->DeleteLocalRef(handler_class);
     env->DeleteLocalRef(main_looper);
   }
 
@@ -286,6 +334,11 @@ bool context::open_device(jobject device_info, void* cookie, bool is_output)
     LOGE("MidiDeviceCallback class not found - ensure the Java class is part of the app");
     if (handler)
       env->DeleteLocalRef(handler);
+    if (my_looper)
+      env->DeleteLocalRef(my_looper);
+    env->DeleteLocalRef(looper_class);
+    env->DeleteLocalRef(midi_mgr);
+    env->DeleteLocalRef(ctx);
     return false;
   }
 
@@ -299,6 +352,11 @@ bool context::open_device(jobject device_info, void* cookie, bool is_output)
       env->ExceptionClear();
     if (handler)
       env->DeleteLocalRef(handler);
+    if (my_looper)
+      env->DeleteLocalRef(my_looper);
+    env->DeleteLocalRef(looper_class);
+    env->DeleteLocalRef(midi_mgr);
+    env->DeleteLocalRef(ctx);
     return false;
   }
 
@@ -314,9 +372,15 @@ bool context::open_device(jobject device_info, void* cookie, bool is_output)
   if (!ok)
     env->ExceptionClear();
 
+  env->DeleteLocalRef(midi_mgr_class);
   env->DeleteLocalRef(callback);
   if (handler)
     env->DeleteLocalRef(handler);
+  if (my_looper)
+    env->DeleteLocalRef(my_looper);
+  env->DeleteLocalRef(looper_class);
+  env->DeleteLocalRef(midi_mgr);
+  env->DeleteLocalRef(ctx);
   return ok;
 }
 
@@ -333,7 +397,9 @@ extern "C" JNIEXPORT void JNICALL Java_dev_celtera_libremidi_MidiDeviceCallback_
   if (midi_device)
     AMidiDevice_fromJava(env, midi_device, &amidi_device);
 
-  if (!amidi_device)
+  if (amidi_device)
+    context::remember_java_device(amidi_device, env->NewGlobalRef(midi_device));
+  else
     LOGE("Failed to convert Java MIDI device to AMidiDevice");
 
   // A null device is reported to the port as an open failure.
@@ -374,6 +440,8 @@ void context::acquire_device_callback()
   if (!midi_mgr)
   {
     LOGE("Cannot watch MIDI devices: no MidiManager");
+    if (ctx)
+      env->DeleteLocalRef(ctx);
     return;
   }
 
@@ -382,6 +450,8 @@ void context::acquire_device_callback()
   {
     LOGE("DeviceObserver class not found - device removal cannot be detected, "
          "ensure the Java class is part of the app");
+    env->DeleteLocalRef(midi_mgr);
+    env->DeleteLocalRef(ctx);
     return;
   }
   auto observer_ctor = env->GetMethodID(observer_class, "<init>", "()V");
@@ -391,6 +461,8 @@ void context::acquire_device_callback()
   {
     if (env->ExceptionCheck())
       env->ExceptionClear();
+    env->DeleteLocalRef(midi_mgr);
+    env->DeleteLocalRef(ctx);
     return;
   }
 
@@ -420,9 +492,13 @@ void context::acquire_device_callback()
   }
 
   env->DeleteLocalRef(handler);
+  env->DeleteLocalRef(handler_class);
   env->DeleteLocalRef(main_looper);
+  env->DeleteLocalRef(looper_class);
+  env->DeleteLocalRef(midi_mgr_class);
   env->DeleteLocalRef(callback);
   env->DeleteLocalRef(midi_mgr);
+  env->DeleteLocalRef(ctx);
 }
 
 void context::release_device_callback()
@@ -442,6 +518,7 @@ void context::release_device_callback()
     env->CallVoidMethod(g_device_callback_manager, unregister_method, g_device_callback);
     if (env->ExceptionCheck())
       env->ExceptionClear();
+    env->DeleteLocalRef(midi_mgr_class);
     env->DeleteGlobalRef(g_device_callback);
     env->DeleteGlobalRef(g_device_callback_manager);
     g_device_callback = nullptr;

@@ -56,6 +56,11 @@ public:
       close_port(); // the device behind the previous port is gone: release it first
     }
 
+    // An earlier open that failed asynchronously leaves its token registered (the application
+    // may retry without close_port()): drop it, or it would dangle once this port is destroyed.
+    if (const jlong stale = token.exchange(0))
+      context::unregister_target(stale);
+
     const unsigned int port_number = port.port;
 
     auto env = context::get_thread_env();
@@ -94,10 +99,11 @@ public:
     const int device_id = port_number < context::midi_device_ids.size()
                               ? context::midi_device_ids[port_number]
                               : -1;
-    token = context::register_target(
+    const jlong new_token = context::register_target(
         this, device_id, configuration.on_error, configuration.on_warning);
+    token = new_token;
     if (!context::open_device(
-            context::midi_devices[port_number], reinterpret_cast<void*>(token), true))
+            context::midi_devices[port_number], reinterpret_cast<void*>(new_token), true))
     {
       close_port();
       libremidi_handle_error(configuration, "midi_out::open_port: failed to open the device");
@@ -110,11 +116,8 @@ public:
   {
     // After this returns, no open callback is running and none will run: a late
     // MidiDeviceCallback finds no target and releases its device.
-    if (token != 0)
-    {
-      context::unregister_target(token);
-      token = 0;
-    }
+    if (const jlong t = token.exchange(0))
+      context::unregister_target(t);
 
     std::lock_guard lock{m_mutex};
     if (!port_open)
@@ -128,7 +131,7 @@ public:
 
     if (send_device)
     {
-      AMidiDevice_release(send_device);
+      context::release_device(send_device);
       send_device = nullptr;
     }
 
@@ -215,9 +218,11 @@ public:
   void on_device_opened(AMidiDevice* device, std::vector<report>& out) override
   {
     std::lock_guard lock{m_mutex};
-    if (!port_open)
+    if (!port_open || lost)
     {
-      AMidiDevice_release(device);
+      // Closed, or the device was removed while it was still opening: nothing to open or
+      // flush, and nothing more to report (the loss was reported when it was detected).
+      context::release_device(device);
       return;
     }
 
@@ -268,9 +273,12 @@ public:
 
   void on_device_lost(std::vector<report>& out) override
   {
-    // No lock: this runs under the registry lock, and a sender may hold m_mutex.
+    // Lock order: registry (held by the caller) -> m_mutex, as in on_device_opened().
+    std::lock_guard lock{m_mutex};
     if (!port_open)
       return;
+    pending.clear(); // never to be flushed
+    pending_bytes = 0;
     mark_lost();
     if (!loss_reported.exchange(true))
       out.push_back({true, "midi_out: the MIDI device was removed"});
@@ -288,7 +296,7 @@ private:
   {
     if (send_device)
     {
-      AMidiDevice_release(send_device);
+      context::release_device(send_device);
       send_device = nullptr;
     }
     pending.clear();
@@ -312,7 +320,7 @@ private:
   bool overflow_reported = false;
   std::chrono::steady_clock::time_point opened_at;
 
-  jlong token = 0; // app thread only
+  std::atomic<jlong> token{0};
 };
 }
 }

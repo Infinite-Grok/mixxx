@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <thread>
 
 NAMESPACE_LIBREMIDI
@@ -51,6 +52,11 @@ public:
       close_port(); // the device behind the previous port is gone: release it first
     }
 
+    // An earlier open that failed asynchronously leaves its token registered (the application
+    // may retry without close_port()): drop it, or it would dangle once this port is destroyed.
+    if (const jlong stale = token.exchange(0))
+      context::unregister_target(stale);
+
     const unsigned int port_number = port.port;
     auto env = context::get_thread_env();
     if (!env)
@@ -75,16 +81,16 @@ public:
     }
 
     port_open = true;
-    running = true;
     lost = false;
     loss_reported = false;
     const int device_id = port_number < context::midi_device_ids.size()
                               ? context::midi_device_ids[port_number]
                               : -1;
-    token = context::register_target(
+    const jlong new_token = context::register_target(
         this, device_id, configuration.on_error, configuration.on_warning);
+    token = new_token;
     if (!context::open_device(
-            context::midi_devices[port_number], reinterpret_cast<void*>(token), false))
+            context::midi_devices[port_number], reinterpret_cast<void*>(new_token), false))
     {
       close_port();
       libremidi_handle_error(configuration, "midi_in::open_port: failed to open the device");
@@ -97,20 +103,24 @@ public:
   {
     // After this returns, no open callback is running and none will run: a late
     // MidiDeviceCallback finds no target and releases its device.
-    if (token != 0)
-    {
-      context::unregister_target(token);
-      token = 0;
-    }
+    if (const jlong t = token.exchange(0))
+      context::unregister_target(t);
 
     if (!port_open)
       return stdx::error{};
 
-    running = false;
+    if (poll)
+    {
+      // Tells this poll thread (and only this one) to leave, even if the port is reopened
+      // before it has noticed.
+      poll->stop = true;
+      poll.reset();
+    }
 
     if (poll_thread.joinable())
     {
-      // close_port() may be called from an on_error callback, i.e. from the poll thread itself.
+      // close_port() may be called from a callback, i.e. from the poll thread itself (the
+      // thread then leaves as soon as the callback returns, without touching the port again).
       if (poll_thread.get_id() == std::this_thread::get_id())
         poll_thread.detach();
       else
@@ -125,7 +135,7 @@ public:
 
     if (receive_device)
     {
-      AMidiDevice_release(receive_device);
+      context::release_device(receive_device);
       receive_device = nullptr;
     }
 
@@ -135,10 +145,21 @@ public:
 
   bool is_port_open() const noexcept { return port_open && !lost; }
 
-  void start_midi_thread() { poll_thread = std::thread(&midi_in::poll_midi, this); }
+  //! One per poll thread: close_port() sets `stop`, so a thread that is still inside a user
+  //! callback when the port is closed and reopened can never become a second poller.
+  struct poll_state
+  {
+    std::atomic<bool> stop{false};
+  };
+
+  void start_midi_thread()
+  {
+    poll = std::make_shared<poll_state>();
+    poll_thread = std::thread(&midi_in::poll_midi, this, poll, midi_output_port);
+  }
 
   timestamp absolute_timestamp() const noexcept override { return system_ns(); }
-  void poll_midi()
+  void poll_midi(std::shared_ptr<poll_state> state, AMidiOutputPort* port)
   {
     static constexpr timestamp_backend_info timestamp_info{
         .has_absolute_timestamps = false,
@@ -151,10 +172,13 @@ public:
     int64_t timestamp;
     size_t num_bytes;
 
-    while (running)
+    // Once `state->stop` is seen this thread (possibly detached) must not touch the port.
+    while (!state->stop)
     {
       // AMidi has no blocking receive, so wake up periodically...
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      if (state->stop)
+        return;
 
       // The device was removed (already reported by on_device_lost()): nothing to poll.
       if (lost)
@@ -163,10 +187,10 @@ public:
       // ... and drain everything that is queued before sleeping again:
       // a single read per wake-up caps throughput at ~1 packet/ms, which a
       // busy controller exceeds, overflowing the framework socket.
-      while (running)
+      while (!state->stop)
       {
         const ssize_t num_messages = AMidiOutputPort_receive(
-            midi_output_port, &op_code, buffer, sizeof(buffer), &num_bytes, &timestamp);
+            port, &op_code, buffer, sizeof(buffer), &num_bytes, &timestamp);
 
         if (num_messages < 0)
         {
@@ -198,9 +222,10 @@ public:
 
   void on_device_opened(AMidiDevice* device, std::vector<report>& out) override
   {
-    if (!port_open)
+    if (!port_open || lost)
     {
-      AMidiDevice_release(device);
+      // Closed, or the device was removed while it was still opening: nothing to open.
+      context::release_device(device);
       return;
     }
 
@@ -244,10 +269,9 @@ private:
   {
     if (receive_device)
     {
-      AMidiDevice_release(receive_device);
+      context::release_device(receive_device);
       receive_device = nullptr;
     }
-    running = false;
     port_open = false;
     store_relaxed(port_open_, false); // what libremidi::midi_in::is_port_open() reads
     out.push_back({true, std::move(message)});
@@ -258,10 +282,10 @@ private:
   AMidiOutputPort* midi_output_port = nullptr;
   std::thread poll_thread;
   std::atomic<bool> port_open{false};
-  std::atomic<bool> running{false};
   std::atomic<bool> lost{false};          // the device behind the port was removed / died
   std::atomic<bool> loss_reported{false}; // on_error was told about it
-  jlong token = 0;
+  std::shared_ptr<poll_state> poll;
+  std::atomic<jlong> token{0};
   midi1::input_state_machine m_processing{this->configuration};
 };
 }
