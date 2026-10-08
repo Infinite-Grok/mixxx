@@ -15,6 +15,7 @@ namespace android
 class midi_in
     : public midi1::in_api
     , public error_handler
+    , public target
 {
 public:
   explicit midi_in(
@@ -43,7 +44,7 @@ public:
     if (is_port_open())
     {
       libremidi_handle_error(configuration, "midi_in::open_port: a port is already open");
-      return std::errc{};
+      return std::errc::device_or_resource_busy;
     }
 
     const unsigned int port_number = port.port;
@@ -51,14 +52,14 @@ public:
     if (!env)
     {
       libremidi_handle_error(configuration, "midi_in::open_port: failed to get JNI environment");
-      return std::errc{};
+      return std::errc::io_error;
     }
 
     auto ctx = context::get_context(env);
     if (!ctx)
     {
       libremidi_handle_error(configuration, "midi_in::open_port: failed to get Android context");
-      return std::errc{};
+      return std::errc::io_error;
     }
 
     context::refresh_midi_devices(env, ctx, false);
@@ -66,25 +67,44 @@ public:
     if (port_number >= context::midi_devices.size())
     {
       libremidi_handle_error(configuration, "midi_in::open_port: invalid port number");
-      return std::errc{};
+      return std::errc::invalid_argument;
     }
 
     port_open = true;
     running = true;
-    context::open_device(context::midi_devices[port_number], this, false);
+    token = context::register_target(this, configuration.on_error, configuration.on_warning);
+    if (!context::open_device(
+            context::midi_devices[port_number], reinterpret_cast<void*>(token), false))
+    {
+      close_port();
+      libremidi_handle_error(configuration, "midi_in::open_port: failed to open the device");
+      return std::errc::io_error;
+    }
     return stdx::error{};
   }
 
   stdx::error close_port() override
   {
+    // After this returns, no open callback is running and none will run: a late
+    // MidiDeviceCallback finds no target and releases its device.
+    if (token != 0)
+    {
+      context::unregister_target(token);
+      token = 0;
+    }
+
     if (!is_port_open())
-      return std::errc{};
+      return stdx::error{};
 
     running = false;
 
     if (poll_thread.joinable())
     {
-      poll_thread.join();
+      // close_port() may be called from an on_error callback, i.e. from the poll thread itself.
+      if (poll_thread.get_id() == std::this_thread::get_id())
+        poll_thread.detach();
+      else
+        poll_thread.join();
     }
 
     if (midi_output_port)
@@ -160,20 +180,54 @@ public:
     }
   }
 
-  static void open_callback(midi_in* self, AMidiDevice* device)
+  void on_device_opened(AMidiDevice* device, std::vector<report>& out) override
   {
-    self->receive_device = device;
-    AMidiOutputPort_open(device, 0, &self->midi_output_port);
-    self->start_midi_thread();
+    if (!port_open)
+    {
+      AMidiDevice_release(device);
+      return;
+    }
+
+    receive_device = device;
+    const media_status_t status = AMidiOutputPort_open(device, 0, &midi_output_port);
+    if (status != AMEDIA_OK || !midi_output_port)
+    {
+      midi_output_port = nullptr;
+      fail_open(
+          out, "midi_in::open_port: AMidiOutputPort_open failed: " + std::to_string((int)status));
+      return;
+    }
+    start_midi_thread();
+  }
+
+  void on_open_failed(std::vector<report>& out) override
+  {
+    if (!port_open)
+      return;
+    fail_open(out, "midi_in::open_port: the MIDI device could not be opened");
   }
 
 private:
+  void fail_open(std::vector<report>& out, std::string message)
+  {
+    if (receive_device)
+    {
+      AMidiDevice_release(receive_device);
+      receive_device = nullptr;
+    }
+    running = false;
+    port_open = false;
+    store_relaxed(port_open_, false); // what libremidi::midi_in::is_port_open() reads
+    out.push_back({true, std::move(message)});
+  }
+
   libremidi::input_configuration configuration;
   AMidiDevice* receive_device = nullptr;
   AMidiOutputPort* midi_output_port = nullptr;
   std::thread poll_thread;
   std::atomic<bool> port_open{false};
   std::atomic<bool> running{false};
+  jlong token = 0;
   midi1::input_state_machine m_processing{this->configuration};
 };
 }

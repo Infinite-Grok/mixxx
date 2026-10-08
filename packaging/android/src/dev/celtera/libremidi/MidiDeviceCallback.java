@@ -17,6 +17,8 @@ public class MidiDeviceCallback implements MidiManager.OnDeviceOpenedListener {
     public void onDeviceOpened(MidiDevice device) {
         if (device == null) {
             Log.e(TAG, "Failed to open MIDI device");
+            // Let the native port report the failure instead of waiting forever.
+            onDeviceOpenFailed(nativePtr, isOutput);
             return;
         }
 
@@ -26,6 +28,7 @@ public class MidiDeviceCallback implements MidiManager.OnDeviceOpenedListener {
 
     // Native method declaration
     private native void onDeviceOpened(MidiDevice device, long targetPtr, boolean isOutput);
+    private native void onDeviceOpenFailed(long targetPtr, boolean isOutput);
 
     static {
         // Load the native library containing the JNI implementation

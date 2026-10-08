@@ -145,19 +145,66 @@ void context::cleanup_devices(JNIEnv* env)
   midi_devices.clear();
 }
 
-void context::open_device(jobject device_info, void* target, bool is_output)
+jclass context::find_app_class(JNIEnv* env, jobject ctx, const char* dotted_name)
+{
+  jclass result = nullptr;
+
+  // FindClass() on a thread that was attached from native code only sees the system
+  // class loader, which does not know the application's classes: go through the
+  // application's own class loader first.
+  auto ctx_class = env->GetObjectClass(ctx);
+  auto get_loader = env->GetMethodID(ctx_class, "getClassLoader", "()Ljava/lang/ClassLoader;");
+  auto loader = get_loader ? env->CallObjectMethod(ctx, get_loader) : nullptr;
+  env->DeleteLocalRef(ctx_class);
+  if (env->ExceptionCheck())
+    env->ExceptionClear();
+
+  if (loader)
+  {
+    auto loader_class = env->FindClass("java/lang/ClassLoader");
+    auto load_class
+        = env->GetMethodID(loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    auto name = env->NewStringUTF(dotted_name);
+    result = (jclass)env->CallObjectMethod(loader, load_class, name);
+    if (env->ExceptionCheck())
+    {
+      env->ExceptionClear();
+      result = nullptr;
+    }
+    env->DeleteLocalRef(name);
+    env->DeleteLocalRef(loader_class);
+    env->DeleteLocalRef(loader);
+  }
+
+  if (!result)
+  {
+    std::string slashed = dotted_name;
+    for (auto& c : slashed)
+      if (c == '.')
+        c = '/';
+    result = env->FindClass(slashed.c_str());
+    if (env->ExceptionCheck())
+    {
+      env->ExceptionClear();
+      result = nullptr;
+    }
+  }
+  return result;
+}
+
+bool context::open_device(jobject device_info, void* cookie, bool is_output)
 {
   auto env = get_thread_env();
   if (!env)
-    return;
+    return false;
 
   auto ctx = get_context(env);
   if (!ctx)
-    return;
+    return false;
 
   auto midi_mgr = get_midi_manager(env, ctx);
   if (!midi_mgr)
-    return;
+    return false;
 
   // Check if we're on the main thread
   auto looper_class = env->FindClass("android/os/Looper");
@@ -181,18 +228,27 @@ void context::open_device(jobject device_info, void* target, bool is_output)
   }
 
   // Create the callback listener
-  auto callback_class = env->FindClass("dev/celtera/libremidi/MidiDeviceCallback");
+  auto callback_class = find_app_class(env, ctx, "dev.celtera.libremidi.MidiDeviceCallback");
   if (!callback_class)
   {
-    LOGE("MidiDeviceCallback class not found - ensure the Java class is loaded");
+    LOGE("MidiDeviceCallback class not found - ensure the Java class is part of the app");
     if (handler)
       env->DeleteLocalRef(handler);
-    return;
+    return false;
   }
 
   auto callback_ctor = env->GetMethodID(callback_class, "<init>", "(JZ)V");
-  auto callback
-      = env->NewObject(callback_class, callback_ctor, (jlong)target, (jboolean)is_output);
+  auto callback = env->NewObject(
+      callback_class, callback_ctor, (jlong)(intptr_t)cookie, (jboolean)is_output);
+  env->DeleteLocalRef(callback_class);
+  if (!callback)
+  {
+    if (env->ExceptionCheck())
+      env->ExceptionClear();
+    if (handler)
+      env->DeleteLocalRef(handler);
+    return false;
+  }
 
   // Open the device
   auto midi_mgr_class = env->FindClass("android/media/midi/MidiManager");
@@ -202,38 +258,46 @@ void context::open_device(jobject device_info, void* target, bool is_output)
       "MidiManager$OnDeviceOpenedListener;Landroid/os/Handler;)V");
 
   env->CallVoidMethod(midi_mgr, open_device_method, device_info, callback, handler);
+  const bool ok = !env->ExceptionCheck();
+  if (!ok)
+    env->ExceptionClear();
 
   env->DeleteLocalRef(callback);
   if (handler)
     env->DeleteLocalRef(handler);
+  return ok;
 }
 
 extern "C" JNIEXPORT void JNICALL Java_dev_celtera_libremidi_MidiDeviceCallback_onDeviceOpened(
-    JNIEnv* env, jobject /*thiz*/, jobject midi_device, jlong target_ptr, jboolean is_output)
+    JNIEnv* env, jobject /*thiz*/, jobject midi_device, jlong target_ptr, jboolean /*is_output*/)
 {
-  if (!midi_device || target_ptr == 0)
+  if (target_ptr == 0)
   {
-    LOGE("Invalid device or target pointer in callback");
+    LOGE("Invalid target in callback");
     return;
   }
 
   AMidiDevice* amidi_device = nullptr;
-  AMidiDevice_fromJava(env, midi_device, &amidi_device);
+  if (midi_device)
+    AMidiDevice_fromJava(env, midi_device, &amidi_device);
 
   if (!amidi_device)
-  {
     LOGE("Failed to convert Java MIDI device to AMidiDevice");
+
+  // A null device is reported to the port as an open failure.
+  context::handle_device_opened(amidi_device, target_ptr);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_celtera_libremidi_MidiDeviceCallback_onDeviceOpenFailed(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong target_ptr, jboolean /*is_output*/)
+{
+  if (target_ptr == 0)
+  {
+    LOGE("Invalid target in callback");
     return;
   }
-
-  if (is_output)
-  {
-    midi_out::open_callback(reinterpret_cast<midi_out*>(target_ptr), amidi_device);
-  }
-  else
-  {
-    midi_in::open_callback(reinterpret_cast<midi_in*>(target_ptr), amidi_device);
-  }
+  context::handle_device_opened(nullptr, target_ptr);
 }
 
 }
