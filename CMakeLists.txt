@@ -3880,6 +3880,7 @@ if(LIBREMIDI)
     endif()
   endif()
   target_compile_definitions(mixxx-lib PUBLIC __LIBREMIDI__)
+  list(APPEND src-mixxx-test src/test/libremidicontroller_test.cpp)
   add_subdirectory(lib/readerwriterqueue-1.0.7)
   add_subdirectory(lib/libremidi)
 

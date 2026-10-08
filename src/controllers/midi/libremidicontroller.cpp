@@ -3,6 +3,7 @@
 #include <QMetaObject>
 #include <libremidi/libremidi.hpp>
 
+#include "controllers/midi/libremidimessage.h"
 #include "controllers/midi/midiutils.h"
 #include "moc_libremidicontroller.cpp"
 #include "util/duration.h"
@@ -56,9 +57,14 @@ void LibremidiController::setOutputPort(
 }
 
 void LibremidiController::onMessage(const libremidi::message& m) {
-    auto status = m.bytes[0];
+    LibremidiShortMessage msg;
+    if (!libremidiUnpackShortMessage(
+                std::span<const unsigned char>(m.bytes.data(), m.bytes.size()), &msg)) {
+        return;
+    }
+    const unsigned char status = msg.status;
     auto timestamp = mixxx::Duration::fromMillis(m.timestamp);
-    qDebug() << "LibremidiController::onMessage" << m.bytes[0] << m.bytes[1] << m.bytes[2];
+    qDebug() << "LibremidiController::onMessage" << msg.status << msg.byte1 << msg.byte2;
 
     if ((status & 0xF8) == 0xF8) {
         // Handle real-time MIDI messages at any time
@@ -74,8 +80,8 @@ void LibremidiController::onMessage(const libremidi::message& m) {
         receive(QByteArray::fromRawData(pData, m.size()), timestamp);
     } else {
         // unsigned char channel = status & 0x0F;
-        unsigned char note = m.bytes[1];
-        unsigned char velocity = m.bytes[2];
+        const unsigned char note = msg.byte1;
+        const unsigned char velocity = msg.byte2;
         QMetaObject::invokeMethod(this, [=, this] {
             receivedShortMessage(status, note, velocity, timestamp);
         });
