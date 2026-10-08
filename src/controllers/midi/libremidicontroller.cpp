@@ -20,6 +20,9 @@ LibremidiController::~LibremidiController() {
 
 void LibremidiController::removeInputPort() {
     m_pInputDevice.reset();
+    // Forget the port too: the enumerator uses inputPort() to decide whether
+    // the device still has any port left.
+    m_pInputPort.reset();
     setInputDevice(false);
 }
 
@@ -45,6 +48,7 @@ void LibremidiController::setInputPort(libremidi::observer& observer, libremidi:
 
 void LibremidiController::removeOutputPort() {
     m_pOutputDevice.reset();
+    m_pOutputPort.reset();
     setOutputDevice(false);
 }
 
@@ -97,7 +101,7 @@ int LibremidiController::open(const QString& resourcePath) {
         return -1;
     }
 
-    if (m_pInputPort && isInputDevice()) {
+    if (m_pInputPort && m_pInputDevice && isInputDevice()) {
         qCInfo(m_logBase) << "LibremidiController: Opening"
                           << m_pInputPort->port_name.c_str() << "for input";
         stdx::error error = m_pInputDevice->open_port(m_pInputPort.value());
@@ -107,7 +111,7 @@ int LibremidiController::open(const QString& resourcePath) {
             return -2;
         }
     }
-    if (m_pOutputPort && isOutputDevice()) {
+    if (m_pOutputPort && m_pOutputDevice && isOutputDevice()) {
         qCInfo(m_logBase) << "LibremidiController: Opening"
                           << m_pOutputPort->port_name.c_str() << "for output";
 
@@ -156,7 +160,7 @@ int LibremidiController::close() {
 
 void LibremidiController::sendShortMsg(
         unsigned char status, unsigned char byte1, unsigned char byte2) {
-    if (!m_pOutputPort || !m_pOutputDevice->is_port_open()) {
+    if (!m_pOutputPort || !m_pOutputDevice || !m_pOutputDevice->is_port_open()) {
         return;
     }
 
@@ -183,7 +187,7 @@ void LibremidiController::sendShortMsg(
 }
 
 bool LibremidiController::sendBytes(const QByteArray& data) {
-    if (!m_pOutputPort || !m_pOutputDevice->is_port_open()) {
+    if (!m_pOutputPort || !m_pOutputDevice || !m_pOutputDevice->is_port_open()) {
         return false;
     }
 
