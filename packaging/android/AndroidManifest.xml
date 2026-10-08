@@ -66,6 +66,11 @@
         </provider>
     </application>
 
+    <!-- libremidi (AMidi backend) talks to android.media.midi. Not required so the
+         app still installs on devices without the MIDI feature. -->
+    <uses-feature
+        android:name="android.software.midi"
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.usb.host"
         android:required="true" />
