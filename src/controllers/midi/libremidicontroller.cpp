@@ -31,6 +31,13 @@ void LibremidiController::setInputPort(libremidi::observer& observer, libremidi:
                     .on_message = [this](const libremidi::message& m) {
                         this->onMessage(m);
                     },
+                    // libremidi drops SysEx, MIDI clock and active sensing by
+                    // default. Controllers (e.g. the Hercules T7) answer with
+                    // SysEx and mappings may rely on any of these, as they do
+                    // with PortMidi, so deliver everything.
+                    .ignore_sysex = false,
+                    .ignore_timing = false,
+                    .ignore_sensing = false,
             },
             libremidi::midi_in_configuration_for(observer)};
 }
