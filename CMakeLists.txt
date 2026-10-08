@@ -3886,7 +3886,11 @@ if(LIBREMIDI)
     endif()
   endif()
   target_compile_definitions(mixxx-lib PUBLIC __LIBREMIDI__)
-  list(APPEND src-mixxx-test src/test/libremidicontroller_test.cpp)
+  if(BUILD_TESTING)
+    # mixxx-test is already defined at this point, so append to the target
+    # instead of the (already consumed) src-mixxx-test list.
+    target_sources(mixxx-test PRIVATE src/test/libremidicontroller_test.cpp)
+  endif()
   add_subdirectory(lib/readerwriterqueue-1.0.7)
   add_subdirectory(lib/libremidi)
 
