@@ -62,6 +62,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL Android)
     set(CMAKE_ANDROID_NDK "$ENV{ANDROID_NDK_HOME}")
   endif()
   set(ANDROID ON)
+  # 16 KB page size compatibility (Android 15+ devices): align the ELF LOAD
+  # segments of every shared library we link (libmixxx and friends). NDK r27
+  # still defaults to 4 KB. Prebuilt dependency libraries are not affected.
+  string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
+  string(APPEND CMAKE_MODULE_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
+  string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
   if(DEFINED ENV{QT_ANDROID_KEYSTORE_PATH})
     set(QT_ANDROID_SIGN_APK ON)
   endif()
