@@ -64,7 +64,6 @@ void LibremidiController::onMessage(const libremidi::message& m) {
     }
     const unsigned char status = msg.status;
     auto timestamp = mixxx::Duration::fromMillis(m.timestamp);
-    qDebug() << "LibremidiController::onMessage" << msg.status << msg.byte1 << msg.byte2;
 
     if ((status & 0xF8) == 0xF8) {
         // Handle real-time MIDI messages at any time
