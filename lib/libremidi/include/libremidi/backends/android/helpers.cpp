@@ -1,6 +1,7 @@
 #include <libremidi/backends/android/helpers.hpp>
 #include <libremidi/backends/android/midi_in.hpp>
 #include <libremidi/backends/android/midi_out.hpp>
+#include <libremidi/backends/android/thread_env.hpp>
 
 NAMESPACE_LIBREMIDI::android
 {
@@ -9,7 +10,6 @@ NAMESPACE_LIBREMIDI::android
 
 JNIEnv* context::get_thread_env()
 {
-  JNIEnv* env;
   JavaVM* jvm;
   jsize count;
   if (JNI_GetCreatedJavaVMs(&jvm, 1, &count) != JNI_OK || count < 1)
@@ -18,15 +18,9 @@ JNIEnv* context::get_thread_env()
     return nullptr;
   }
 
-  if (jvm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED)
-  {
-    if (jvm->AttachCurrentThread(&env, nullptr) != JNI_OK)
-    {
-      LOGE("Failed to attach thread");
-      return nullptr;
-    }
-  }
-
+  auto env = detail::get_or_attach_thread_env(jvm);
+  if (!env)
+    LOGE("Failed to get the JNI environment of this thread");
   return env;
 }
 
