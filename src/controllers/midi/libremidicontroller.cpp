@@ -79,8 +79,14 @@ void LibremidiController::onMessage(const libremidi::message& m) {
 
     bool is_sysex = status == 0xF0;
     if (is_sysex) {
+        // onMessage() runs on libremidi's input thread: receive() drives the
+        // script engine, which belongs to the controller thread. Hand over a
+        // deep copy, the message buffer does not outlive this callback.
         const auto* pData = reinterpret_cast<const char*>(m.bytes.data());
-        receive(QByteArray::fromRawData(pData, m.size()), timestamp);
+        QByteArray data(pData, static_cast<qsizetype>(m.bytes.size()));
+        QMetaObject::invokeMethod(this, [this, data = std::move(data), timestamp] {
+            receive(data, timestamp);
+        });
     } else {
         // unsigned char channel = status & 0x0F;
         const unsigned char note = msg.byte1;
