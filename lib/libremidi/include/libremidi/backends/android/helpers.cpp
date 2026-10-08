@@ -83,6 +83,7 @@ void context::refresh_midi_devices(JNIEnv* env, jobject ctx, bool is_output)
   auto device_info_class = env->FindClass("android/media/midi/MidiDeviceInfo");
   auto get_input_count = env->GetMethodID(device_info_class, "getInputPortCount", "()I");
   auto get_output_count = env->GetMethodID(device_info_class, "getOutputPortCount", "()I");
+  auto get_id = env->GetMethodID(device_info_class, "getId", "()I");
 
   jsize count = env->GetArrayLength(device_array);
   for (jsize i = 0; i < count; ++i)
@@ -94,6 +95,7 @@ void context::refresh_midi_devices(JNIEnv* env, jobject ctx, bool is_output)
     if (port_count > 0)
     {
       midi_devices.push_back(env->NewGlobalRef(device_info));
+      midi_device_ids.push_back(env->CallIntMethod(device_info, get_id));
     }
     env->DeleteLocalRef(device_info);
   }
@@ -102,18 +104,13 @@ void context::refresh_midi_devices(JNIEnv* env, jobject ctx, bool is_output)
   env->DeleteLocalRef(midi_service);
 }
 
-std::string context::port_name(JNIEnv* env, unsigned int port_number)
+// MidiDeviceInfo.getProperties().getString("name")
+static std::string device_name(JNIEnv* env, jobject device_info)
 {
-  if (port_number >= midi_devices.size())
-  {
-    LOGE("Invalid port number");
-    return "";
-  }
-
   auto device_info_class = env->FindClass("android/media/midi/MidiDeviceInfo");
   auto get_props_method
       = env->GetMethodID(device_info_class, "getProperties", "()Landroid/os/Bundle;");
-  auto bundle = env->CallObjectMethod(midi_devices[port_number], get_props_method);
+  auto bundle = env->CallObjectMethod(device_info, get_props_method);
 
   auto bundle_class = env->FindClass("android/os/Bundle");
   auto get_string_method
@@ -136,6 +133,60 @@ std::string context::port_name(JNIEnv* env, unsigned int port_number)
   return result;
 }
 
+std::string context::port_name(JNIEnv* env, unsigned int port_number)
+{
+  if (port_number >= midi_devices.size())
+  {
+    LOGE("Invalid port number");
+    return "";
+  }
+
+  return device_name(env, midi_devices[port_number]);
+}
+
+device_event context::read_device_event(JNIEnv* env, jobject device_info)
+{
+  auto device_info_class = env->FindClass("android/media/midi/MidiDeviceInfo");
+  auto get_id = env->GetMethodID(device_info_class, "getId", "()I");
+  auto get_input_count = env->GetMethodID(device_info_class, "getInputPortCount", "()I");
+  auto get_output_count = env->GetMethodID(device_info_class, "getOutputPortCount", "()I");
+
+  device_event ev;
+  ev.id = env->CallIntMethod(device_info, get_id);
+  ev.input_ports = env->CallIntMethod(device_info, get_input_count);
+  ev.output_ports = env->CallIntMethod(device_info, get_output_count);
+  ev.name = device_name(env, device_info);
+  env->DeleteLocalRef(device_info_class);
+  return ev;
+}
+
+std::vector<device_event> context::list_devices(JNIEnv* env, jobject ctx)
+{
+  std::vector<device_event> result;
+
+  auto midi_service = get_midi_manager(env, ctx);
+  if (!midi_service)
+    return result;
+
+  auto midi_mgr_class = env->FindClass("android/media/midi/MidiManager");
+  auto get_devices_method
+      = env->GetMethodID(midi_mgr_class, "getDevices", "()[Landroid/media/midi/MidiDeviceInfo;");
+  auto device_array = (jobjectArray)env->CallObjectMethod(midi_service, get_devices_method);
+  if (device_array)
+  {
+    jsize count = env->GetArrayLength(device_array);
+    for (jsize i = 0; i < count; ++i)
+    {
+      auto device_info = env->GetObjectArrayElement(device_array, i);
+      result.push_back(read_device_event(env, device_info));
+      env->DeleteLocalRef(device_info);
+    }
+    env->DeleteLocalRef(device_array);
+  }
+  env->DeleteLocalRef(midi_service);
+  return result;
+}
+
 void context::cleanup_devices(JNIEnv* env)
 {
   for (jobject device : midi_devices)
@@ -143,6 +194,7 @@ void context::cleanup_devices(JNIEnv* env)
     env->DeleteGlobalRef(device);
   }
   midi_devices.clear();
+  midi_device_ids.clear();
 }
 
 jclass context::find_app_class(JNIEnv* env, jobject ctx, const char* dotted_name)
@@ -298,6 +350,123 @@ Java_dev_celtera_libremidi_MidiDeviceCallback_onDeviceOpenFailed(
     return;
   }
   context::handle_device_opened(nullptr, target_ptr);
+}
+
+// ---- MidiManager.DeviceCallback (Java class DeviceObserver) ----
+namespace
+{
+std::mutex g_device_callback_mutex;
+int g_device_callback_users = 0;
+jobject g_device_callback = nullptr; // global refs, valid while registered
+jobject g_device_callback_manager = nullptr;
+}
+
+void context::acquire_device_callback()
+{
+  std::lock_guard l{g_device_callback_mutex};
+  g_device_callback_users++;
+  if (g_device_callback)
+    return;
+
+  auto env = get_thread_env();
+  auto ctx = env ? get_context(env) : nullptr;
+  auto midi_mgr = ctx ? get_midi_manager(env, ctx) : nullptr;
+  if (!midi_mgr)
+  {
+    LOGE("Cannot watch MIDI devices: no MidiManager");
+    return;
+  }
+
+  auto observer_class = find_app_class(env, ctx, "dev.celtera.libremidi.DeviceObserver");
+  if (!observer_class)
+  {
+    LOGE("DeviceObserver class not found - device removal cannot be detected, "
+         "ensure the Java class is part of the app");
+    return;
+  }
+  auto observer_ctor = env->GetMethodID(observer_class, "<init>", "()V");
+  auto callback = env->NewObject(observer_class, observer_ctor);
+  env->DeleteLocalRef(observer_class);
+  if (!callback)
+  {
+    if (env->ExceptionCheck())
+      env->ExceptionClear();
+    return;
+  }
+
+  // Deliver on the main looper
+  auto looper_class = env->FindClass("android/os/Looper");
+  auto get_main_looper_method
+      = env->GetStaticMethodID(looper_class, "getMainLooper", "()Landroid/os/Looper;");
+  auto main_looper = env->CallStaticObjectMethod(looper_class, get_main_looper_method);
+  auto handler_class = env->FindClass("android/os/Handler");
+  auto handler_ctor = env->GetMethodID(handler_class, "<init>", "(Landroid/os/Looper;)V");
+  auto handler = env->NewObject(handler_class, handler_ctor, main_looper);
+
+  auto midi_mgr_class = env->FindClass("android/media/midi/MidiManager");
+  auto register_method = env->GetMethodID(
+      midi_mgr_class, "registerDeviceCallback",
+      "(Landroid/media/midi/MidiManager$DeviceCallback;Landroid/os/Handler;)V");
+  env->CallVoidMethod(midi_mgr, register_method, callback, handler);
+  if (env->ExceptionCheck())
+  {
+    env->ExceptionClear();
+    LOGE("MidiManager.registerDeviceCallback failed");
+  }
+  else
+  {
+    g_device_callback = env->NewGlobalRef(callback);
+    g_device_callback_manager = env->NewGlobalRef(midi_mgr);
+  }
+
+  env->DeleteLocalRef(handler);
+  env->DeleteLocalRef(main_looper);
+  env->DeleteLocalRef(callback);
+  env->DeleteLocalRef(midi_mgr);
+}
+
+void context::release_device_callback()
+{
+  std::lock_guard l{g_device_callback_mutex};
+  if (g_device_callback_users > 0)
+    g_device_callback_users--;
+  if (g_device_callback_users > 0 || !g_device_callback)
+    return;
+
+  if (auto env = get_thread_env())
+  {
+    auto midi_mgr_class = env->FindClass("android/media/midi/MidiManager");
+    auto unregister_method = env->GetMethodID(
+        midi_mgr_class, "unregisterDeviceCallback",
+        "(Landroid/media/midi/MidiManager$DeviceCallback;)V");
+    env->CallVoidMethod(g_device_callback_manager, unregister_method, g_device_callback);
+    if (env->ExceptionCheck())
+      env->ExceptionClear();
+    env->DeleteGlobalRef(g_device_callback);
+    env->DeleteGlobalRef(g_device_callback_manager);
+    g_device_callback = nullptr;
+    g_device_callback_manager = nullptr;
+  }
+}
+
+extern "C" JNIEXPORT void JNICALL Java_dev_celtera_libremidi_DeviceObserver_onDeviceAddedNative(
+    JNIEnv* env, jobject /*thiz*/, jobject device_info)
+{
+  auto ctx = context::get_context(env);
+  if (!device_info || !ctx)
+    return;
+  context::notify_device_added(
+      context::read_device_event(env, device_info), context::list_devices(env, ctx));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_dev_celtera_libremidi_DeviceObserver_onDeviceRemovedNative(
+    JNIEnv* env, jobject /*thiz*/, jobject device_info)
+{
+  auto ctx = context::get_context(env);
+  if (!device_info || !ctx)
+    return;
+  context::notify_device_removed(
+      context::read_device_event(env, device_info), context::list_devices(env, ctx));
 }
 
 }

@@ -46,10 +46,14 @@ public:
 
   stdx::error open_port(const output_port& port, std::string_view /*name*/) override
   {
-    if (is_port_open())
+    if (port_open)
     {
-      libremidi_handle_error(configuration, "midi_out::open_port: a port is already open");
-      return std::errc::device_or_resource_busy;
+      if (!lost)
+      {
+        libremidi_handle_error(configuration, "midi_out::open_port: a port is already open");
+        return std::errc::device_or_resource_busy;
+      }
+      close_port(); // the device behind the previous port is gone: release it first
     }
 
     const unsigned int port_number = port.port;
@@ -79,13 +83,19 @@ public:
     {
       std::lock_guard lock{m_mutex};
       port_open = true;
+      lost = false;
+      loss_reported = false;
       pending.clear();
       pending_bytes = 0;
       queued_warned = overflow_reported = false;
       opened_at = std::chrono::steady_clock::now();
     }
 
-    token = context::register_target(this, configuration.on_error, configuration.on_warning);
+    const int device_id = port_number < context::midi_device_ids.size()
+                              ? context::midi_device_ids[port_number]
+                              : -1;
+    token = context::register_target(
+        this, device_id, configuration.on_error, configuration.on_warning);
     if (!context::open_device(
             context::midi_devices[port_number], reinterpret_cast<void*>(token), true))
     {
@@ -128,7 +138,7 @@ public:
     return stdx::error{};
   }
 
-  bool is_port_open() const noexcept { return port_open; }
+  bool is_port_open() const noexcept { return port_open && !lost; }
 
   stdx::error send_message(const unsigned char* message, size_t size) override
   {
@@ -140,6 +150,11 @@ public:
       {
         code = std::errc::not_connected;
         rep = {true, "midi_out::send_message: port is not open"};
+      }
+      else if (lost)
+      {
+        // Already reported when the loss was detected.
+        code = std::errc::not_connected;
       }
       else if (!midi_input_port)
       {
@@ -167,10 +182,21 @@ public:
       else
       {
         const ssize_t result = AMidiInputPort_send(midi_input_port, message, size);
-        if (result < 0 || static_cast<size_t>(result) != size)
+        if (result < 0)
+        {
+          // The framework no longer accepts data: the device is gone. Latch it so that later
+          // sends fail fast and the application is told once.
+          code = std::errc::io_error;
+          mark_lost();
+          if (!loss_reported.exchange(true))
+            rep = {
+                true, "midi_out::send_message: failed to send MIDI data (" + std::to_string(result)
+                          + "), device lost"};
+        }
+        else if (static_cast<size_t>(result) != size)
         {
           code = std::errc::io_error;
-          rep = {true, "midi_out::send_message: failed to send MIDI data"};
+          rep = {true, "midi_out::send_message: MIDI data was only partially sent"};
         }
       }
     }
@@ -240,7 +266,23 @@ public:
     fail_open_locked(out, "midi_out::open_port: the MIDI device could not be opened");
   }
 
+  void on_device_lost(std::vector<report>& out) override
+  {
+    // No lock: this runs under the registry lock, and a sender may hold m_mutex.
+    if (!port_open)
+      return;
+    mark_lost();
+    if (!loss_reported.exchange(true))
+      out.push_back({true, "midi_out: the MIDI device was removed"});
+  }
+
 private:
+  void mark_lost()
+  {
+    lost = true;
+    store_relaxed(port_open_, false); // what libremidi::midi_out::is_port_open() reads
+  }
+
   // m_mutex must be held.
   void fail_open_locked(std::vector<report>& out, std::string message)
   {
@@ -262,6 +304,8 @@ private:
   AMidiDevice* send_device = nullptr;
   AMidiInputPort* midi_input_port = nullptr;
   std::atomic<bool> port_open{false};
+  std::atomic<bool> lost{false};          // the device behind the port was removed
+  std::atomic<bool> loss_reported{false}; // on_error was told about it
   std::deque<std::vector<unsigned char>> pending;
   std::size_t pending_bytes = 0;
   bool queued_warned = false;

@@ -21,10 +21,36 @@ public:
       LOGW("Android backend only supports one client name per process");
     }
     context::client_name = std::string(aconf.client_name);
+
+    if (configuration.has_callbacks())
+    {
+      sink = std::make_shared<observer_sink>();
+      sink->input_added = configuration.input_added;
+      sink->input_removed = configuration.input_removed;
+      sink->output_added = configuration.output_added;
+      sink->output_removed = configuration.output_removed;
+      context::register_observer(sink);
+
+      auto env = context::get_thread_env();
+      auto ctx = env ? context::get_context(env) : nullptr;
+      if (ctx)
+      {
+        const auto devices = context::list_devices(env, ctx);
+        {
+          std::lock_guard l{context::registry_mutex};
+          context::hotplug_snapshot = devices;
+        }
+        if (configuration.notify_in_constructor)
+          notify_existing(devices);
+      }
+    }
   }
 
   ~observer()
   {
+    if (sink)
+      context::unregister_observer(sink);
+
     auto env = context::get_thread_env();
     if (env)
     {
@@ -56,6 +82,8 @@ public:
       port.api = libremidi::API::ANDROID_AMIDI;
       port.port_name = context::port_name(env, i);
       port.port = i;
+      if (i < context::midi_device_ids.size())
+        port.device = static_cast<std::uint64_t>(context::midi_device_ids[i]);
       ports.push_back(std::move(port));
     }
 
@@ -81,6 +109,8 @@ public:
       port.api = libremidi::API::ANDROID_AMIDI;
       port.port_name = context::port_name(env, i);
       port.port = i;
+      if (i < context::midi_device_ids.size())
+        port.device = static_cast<std::uint64_t>(context::midi_device_ids[i]);
       ports.push_back(std::move(port));
     }
 
@@ -88,7 +118,28 @@ public:
   }
 
 private:
+  void notify_existing(const std::vector<device_event>& devices)
+  {
+    std::size_t in_index = 0, out_index = 0;
+    for (const auto& d : devices)
+    {
+      if (d.output_ports > 0)
+      {
+        if (configuration.input_added)
+          configuration.input_added(context::make_port<libremidi::input_port>(d, in_index));
+        in_index++;
+      }
+      if (d.input_ports > 0)
+      {
+        if (configuration.output_added)
+          configuration.output_added(context::make_port<libremidi::output_port>(d, out_index));
+        out_index++;
+      }
+    }
+  }
+
   libremidi::observer_configuration configuration;
+  std::shared_ptr<observer_sink> sink;
 };
 }
 }

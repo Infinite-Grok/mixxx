@@ -41,10 +41,14 @@ public:
 
   stdx::error open_port(const input_port& port, std::string_view /*name*/) override
   {
-    if (is_port_open())
+    if (port_open)
     {
-      libremidi_handle_error(configuration, "midi_in::open_port: a port is already open");
-      return std::errc::device_or_resource_busy;
+      if (!lost)
+      {
+        libremidi_handle_error(configuration, "midi_in::open_port: a port is already open");
+        return std::errc::device_or_resource_busy;
+      }
+      close_port(); // the device behind the previous port is gone: release it first
     }
 
     const unsigned int port_number = port.port;
@@ -72,7 +76,13 @@ public:
 
     port_open = true;
     running = true;
-    token = context::register_target(this, configuration.on_error, configuration.on_warning);
+    lost = false;
+    loss_reported = false;
+    const int device_id = port_number < context::midi_device_ids.size()
+                              ? context::midi_device_ids[port_number]
+                              : -1;
+    token = context::register_target(
+        this, device_id, configuration.on_error, configuration.on_warning);
     if (!context::open_device(
             context::midi_devices[port_number], reinterpret_cast<void*>(token), false))
     {
@@ -93,7 +103,7 @@ public:
       token = 0;
     }
 
-    if (!is_port_open())
+    if (!port_open)
       return stdx::error{};
 
     running = false;
@@ -123,7 +133,7 @@ public:
     return stdx::error{};
   }
 
-  bool is_port_open() const noexcept { return port_open; }
+  bool is_port_open() const noexcept { return port_open && !lost; }
 
   void start_midi_thread() { poll_thread = std::thread(&midi_in::poll_midi, this); }
 
@@ -146,6 +156,10 @@ public:
       // AMidi has no blocking receive, so wake up periodically...
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
+      // The device was removed (already reported by on_device_lost()): nothing to poll.
+      if (lost)
+        return;
+
       // ... and drain everything that is queued before sleeping again:
       // a single read per wake-up caps throughput at ~1 packet/ms, which a
       // busy controller exceeds, overflowing the framework socket.
@@ -158,10 +172,12 @@ public:
         {
           // The port is dead (e.g. the framework dropped the connection): this
           // is not recoverable, so report it once and stop polling.
-          libremidi_handle_error(
-              configuration,
-              "Error receiving MIDI data: " + std::to_string((int)num_messages)
-                  + ", input stopped");
+          mark_lost();
+          if (!loss_reported.exchange(true))
+            libremidi_handle_error(
+                configuration,
+                "Error receiving MIDI data: " + std::to_string((int)num_messages)
+                    + ", input stopped");
           return;
         }
 
@@ -207,7 +223,23 @@ public:
     fail_open(out, "midi_in::open_port: the MIDI device could not be opened");
   }
 
+  void on_device_lost(std::vector<report>& out) override
+  {
+    if (!port_open)
+      return;
+    // The poll thread notices `lost` within a millisecond and stops.
+    mark_lost();
+    if (!loss_reported.exchange(true))
+      out.push_back({true, "midi_in: the MIDI device was removed, input stopped"});
+  }
+
 private:
+  void mark_lost()
+  {
+    lost = true;
+    store_relaxed(port_open_, false); // what libremidi::midi_in::is_port_open() reads
+  }
+
   void fail_open(std::vector<report>& out, std::string message)
   {
     if (receive_device)
@@ -227,6 +259,8 @@ private:
   std::thread poll_thread;
   std::atomic<bool> port_open{false};
   std::atomic<bool> running{false};
+  std::atomic<bool> lost{false};          // the device behind the port was removed / died
+  std::atomic<bool> loss_reported{false}; // on_error was told about it
   jlong token = 0;
   midi1::input_state_machine m_processing{this->configuration};
 };
