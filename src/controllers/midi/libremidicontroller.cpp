@@ -67,7 +67,7 @@ void LibremidiController::onMessage(const libremidi::message& m) {
         return;
     }
     const unsigned char status = msg.status;
-    auto timestamp = mixxx::Duration::fromMillis(m.timestamp);
+    auto timestamp = mixxx::Duration::fromNanos(m.timestamp);
 
     if ((status & 0xF8) == 0xF8) {
         // Handle real-time MIDI messages at any time
