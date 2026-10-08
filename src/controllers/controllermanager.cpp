@@ -215,6 +215,11 @@ void ControllerManager::addDevice(Controller* pController) {
 }
 
 void ControllerManager::removeDevice(Controller* pController) {
+    // The device is gone (e.g. unplugged): stop its engine and release the
+    // ports now instead of leaving it running until it is deleted.
+    if (pController->isOpen()) {
+        pController->close();
+    }
     emit deviceRemoved(pController);
     m_controllers.removeOne(pController);
 }

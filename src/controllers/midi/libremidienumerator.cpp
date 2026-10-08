@@ -185,6 +185,12 @@ Controller* LibremidiEnumerator::addInput(const libremidi::input_port& inputPort
         QString outputName = pDevice->outputPort()->port_name.c_str();
         if (shouldLinkInputToOutput(inputName, outputName)) {
             pDevice->setInputPort(m_observer, inputPort);
+            // The output appeared first (hotplug order is not guaranteed), so
+            // the device was added without an input and has not been opened
+            // yet: set it up now that its input exists.
+            if (!m_enumerating) {
+                m_pControllerManager->setUpDevice(*pDevice);
+            }
             // input was not a distinct device, we should update the existing device
             return nullptr;
         }
@@ -243,7 +249,11 @@ Controller* LibremidiEnumerator::addOutput(const libremidi::output_port& outputP
         if (shouldLinkInputToOutput(portName, outputPort.port_name.c_str())) {
             // qDebug() << inputName << " matched with " << outputName;
             pDevice->setOutputPort(m_observer, outputPort);
-            m_pControllerManager->setUpDevice(*pDevice);
+            // During the initial enumeration ControllerManager::slotSetUpDevices()
+            // sets up every device afterwards; don't open it twice.
+            if (!m_enumerating) {
+                m_pControllerManager->setUpDevice(*pDevice);
+            }
             // output was not a distinct device, we should update the existing device
             return nullptr;
         }
@@ -330,6 +340,7 @@ LibremidiEnumerator::LibremidiEnumerator(
 QList<Controller*> LibremidiEnumerator::queryDevices() {
     QList<Controller*> controllers;
     if (m_devices.empty()) {
+        m_enumerating = true;
         const auto inputPorts = m_observer.get_input_ports();
         const auto outputPorts = m_observer.get_output_ports();
 
@@ -340,6 +351,7 @@ QList<Controller*> LibremidiEnumerator::queryDevices() {
         for (const auto& outputPort : outputPorts) {
             addOutput(outputPort);
         }
+        m_enumerating = false;
     }
 
     for (const auto& controller : m_devices) {

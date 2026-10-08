@@ -28,6 +28,8 @@ class LibremidiEnumerator : public MidiEnumerator {
     std::vector<std::unique_ptr<LibremidiController>> m_devices;
     UserSettingsPointer m_pConfig;
     ControllerManager* m_pControllerManager;
+    // True while queryDevices() builds the initial device list.
+    bool m_enumerating = false;
 };
 
 // For testing.
