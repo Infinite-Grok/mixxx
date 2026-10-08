@@ -2422,6 +2422,10 @@ if(QT6)
     # A2 candidate: separate application id/data namespace from org.mixxx and
     # org.mixxx.t7port so installed builds are never replaced.
     set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "org.mixxx.a4libremidi")
+    # A4 APK C candidate only: libremidi's Android backend needs AMidi (API 29)
+    # and JNI_GetCreatedJavaVMs (API 31). Not for upstream, which keeps the
+    # Qt default minSdk.
+    set_target_properties(mixxx PROPERTIES QT_ANDROID_MIN_SDK_VERSION 31)
     set_target_properties(
       mixxx
       PROPERTIES QT_ANDROID_VERSION_NAME "${MIXXX_VERSION}"
