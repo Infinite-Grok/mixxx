@@ -62,12 +62,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Android)
     set(CMAKE_ANDROID_NDK "$ENV{ANDROID_NDK_HOME}")
   endif()
   set(ANDROID ON)
-  # 16 KB page size compatibility (Android 15+ devices): align the ELF LOAD
-  # segments of every shared library we link (libmixxx and friends). NDK r27
-  # still defaults to 4 KB. Prebuilt dependency libraries are not affected.
-  string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
-  string(APPEND CMAKE_MODULE_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
-  string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
   if(DEFINED ENV{QT_ANDROID_KEYSTORE_PATH})
     set(QT_ANDROID_SIGN_APK ON)
   endif()
@@ -555,6 +549,15 @@ elseif(APPLE)
 endif()
 
 project(mixxx VERSION 2.7.0 LANGUAGES C CXX)
+
+if(CMAKE_SYSTEM_NAME STREQUAL Android)
+  # 16 KB page size compatibility (Android 15+ devices): align the ELF LOAD
+  # segments of every shared library we link (libmixxx and friends). NDK r27
+  # still defaults to 4 KB. Prebuilt dependency libraries are not affected.
+  # Set after project() with add_link_options() so that the NDK's default link
+  # flags (--no-undefined, --gc-sections, --build-id, ...) are kept.
+  add_link_options("LINKER:-z,max-page-size=16384")
+endif()
 # Work around missing version suffixes support https://gitlab.kitware.com/cmake/cmake/-/issues/16716
 set(MIXXX_VERSION_PRERELEASE "alpha") # set to "alpha" "beta" or ""
 
