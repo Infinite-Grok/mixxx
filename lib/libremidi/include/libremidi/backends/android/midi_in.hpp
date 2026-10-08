@@ -123,24 +123,39 @@ public:
 
     while (running)
     {
+      // AMidi has no blocking receive, so wake up periodically...
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
-      ssize_t num_messages = AMidiOutputPort_receive(
-          midi_output_port, &op_code, buffer, sizeof(buffer), &num_bytes, &timestamp);
-
-      if (num_messages < 0)
+      // ... and drain everything that is queued before sleeping again:
+      // a single read per wake-up caps throughput at ~1 packet/ms, which a
+      // busy controller exceeds, overflowing the framework socket.
+      while (running)
       {
-        LOGE("Error receiving MIDI data: %d", (int)num_messages);
-        continue;
-      }
+        const ssize_t num_messages = AMidiOutputPort_receive(
+            midi_output_port, &op_code, buffer, sizeof(buffer), &num_bytes, &timestamp);
 
-      if (num_messages > 0 && num_bytes > 0)
-      {
-        const auto to_ns = [=] { return timestamp; };
+        if (num_messages < 0)
+        {
+          // The port is dead (e.g. the framework dropped the connection): this
+          // is not recoverable, so report it once and stop polling.
+          libremidi_handle_error(
+              configuration,
+              "Error receiving MIDI data: " + std::to_string((int)num_messages)
+                  + ", input stopped");
+          return;
+        }
 
-        m_processing.on_bytes_multi(
-            {buffer, buffer + num_bytes},
-            m_processing.timestamp<timestamp_info>(to_ns, timestamp));
+        if (num_messages == 0)
+          break;
+
+        if (op_code == AMIDI_OPCODE_DATA && num_bytes > 0)
+        {
+          const auto to_ns = [=] { return timestamp; };
+
+          m_processing.on_bytes_multi(
+              {buffer, buffer + num_bytes},
+              m_processing.timestamp<timestamp_info>(to_ns, timestamp));
+        }
       }
     }
   }
