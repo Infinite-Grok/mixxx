@@ -2,7 +2,9 @@
 
 #include <QMetaObject>
 #include <QRegularExpression>
+#include <algorithm>
 #include <libremidi/libremidi.hpp>
+#include <vector>
 
 #include "controllers/controllermanager.h"
 #include "controllers/defs_controllers.h"
@@ -165,6 +167,10 @@ bool shouldLinkInputToOutput(const QString& input_name,
     return false;
 }
 
+// Hotplug events of the two ports of one device arrive separately, in an
+// unspecified order, usually within a few milliseconds of each other.
+constexpr int kHotplugSettleMs = 300;
+
 } // namespace
 
 // either add input to existing controller or create a new controller
@@ -178,18 +184,28 @@ Controller* LibremidiEnumerator::addInput(const libremidi::input_port& inputPort
 
     for (auto& pDevice : m_devices) {
         auto* port = pDevice->inputPort();
-        if (port) {
+        if (port && port->port_name == inputPort.port_name) {
+            // Already known, e.g. announced by the observer as well as by the
+            // initial enumeration.
+            return nullptr;
+        }
+    }
+
+    for (auto& pDevice : m_devices) {
+        auto* port = pDevice->inputPort();
+        auto* pOutput = pDevice->outputPort();
+        if (port || !pOutput) {
             continue;
         }
 
-        QString outputName = pDevice->outputPort()->port_name.c_str();
+        QString outputName = pOutput->port_name.c_str();
         if (shouldLinkInputToOutput(inputName, outputName)) {
             pDevice->setInputPort(m_observer, inputPort);
             // The output appeared first (hotplug order is not guaranteed), so
-            // the device was added without an input and has not been opened
-            // yet: set it up now that its input exists.
+            // the device was added without an input: set it up once the other
+            // port events have settled.
             if (!m_enumerating) {
-                m_pControllerManager->setUpDevice(*pDevice);
+                scheduleSetUp(pDevice.get(), false);
             }
             // input was not a distinct device, we should update the existing device
             return nullptr;
@@ -223,9 +239,7 @@ void LibremidiEnumerator::removeInput(const libremidi::input_port& inputPort) {
             // qDebug() << inputPort.port_name << " " << inputPort.port << "
             // removed with " << device->getName() << " " <<
             // device->m_pInputPort.value().port;
-            m_pControllerManager->removeDevice(pDevice);
-            it->release()->deleteLater();
-            m_devices.erase(it);
+            removeDevice(it);
             break;
         }
     }
@@ -240,19 +254,29 @@ Controller* LibremidiEnumerator::addOutput(const libremidi::output_port& outputP
 
     QString outputName = outputPort.port_name.c_str();
     for (auto& pDevice : m_devices) {
-        libremidi::midi_out* pOutput = pDevice->outputDevice();
-        if (pOutput) {
+        auto* pKnown = pDevice->outputPort();
+        if (pKnown && pKnown->port_name == outputPort.port_name) {
+            return nullptr;
+        }
+    }
+
+    for (auto& pDevice : m_devices) {
+        auto* pKnown = pDevice->outputPort();
+        auto* pInput = pDevice->inputPort();
+        if (pKnown || !pInput) {
             continue;
         }
 
-        QString portName = pDevice->inputPort()->port_name.c_str();
+        QString portName = pInput->port_name.c_str();
         if (shouldLinkInputToOutput(portName, outputPort.port_name.c_str())) {
             // qDebug() << inputName << " matched with " << outputName;
             pDevice->setOutputPort(m_observer, outputPort);
             // During the initial enumeration ControllerManager::slotSetUpDevices()
-            // sets up every device afterwards; don't open it twice.
+            // sets up every device afterwards; don't open it twice. On hotplug
+            // the input usually arrived first and the device is scheduled
+            // already; it then opens once, with both ports.
             if (!m_enumerating) {
-                m_pControllerManager->setUpDevice(*pDevice);
+                scheduleSetUp(pDevice.get(), false);
             }
             // output was not a distinct device, we should update the existing device
             return nullptr;
@@ -284,11 +308,55 @@ void LibremidiEnumerator::removeOutput(const libremidi::output_port& outputPort)
         } else {
             // contains only output port, remove device
             // qDebug() << outputPort.port_name << " removed with " << device->getName();
-            m_pControllerManager->removeDevice(pDevice);
-            it->release()->deleteLater();
-            m_devices.erase(it);
+            removeDevice(it);
             break;
         }
+    }
+}
+
+void LibremidiEnumerator::removeDevice(
+        std::vector<std::unique_ptr<LibremidiController>>::iterator it) {
+    LibremidiController* pDevice = it->get();
+    // A hotplugged device that was never handed to the ControllerManager is
+    // simply dropped; otherwise close it first and let the manager forget it.
+    if (!forgetScheduled(pDevice)) {
+        m_pControllerManager->removeDevice(pDevice);
+    }
+    it->release()->deleteLater();
+    m_devices.erase(it);
+}
+
+void LibremidiEnumerator::scheduleSetUp(LibremidiController* pDevice, bool isNew) {
+    auto contains = [pDevice](const std::vector<LibremidiController*>& v) {
+        return std::find(v.begin(), v.end(), pDevice) != v.end();
+    };
+    // A device still waiting to be added is set up by addDevice() anyway.
+    if (isNew) {
+        if (!contains(m_scheduledNew)) {
+            m_scheduledNew.push_back(pDevice);
+        }
+    } else if (!contains(m_scheduledNew) && !contains(m_scheduledSetUp)) {
+        m_scheduledSetUp.push_back(pDevice);
+    }
+    // (Re)start: wait until no further port event arrives.
+    m_settleTimer.start();
+}
+
+bool LibremidiEnumerator::forgetScheduled(LibremidiController* pDevice) {
+    std::erase(m_scheduledSetUp, pDevice);
+    return std::erase(m_scheduledNew, pDevice) > 0;
+}
+
+void LibremidiEnumerator::flushScheduled() {
+    auto added = std::move(m_scheduledNew);
+    auto setUp = std::move(m_scheduledSetUp);
+    m_scheduledNew.clear();
+    m_scheduledSetUp.clear();
+    for (LibremidiController* pDevice : added) {
+        m_pControllerManager->addDevice(pDevice);
+    }
+    for (LibremidiController* pDevice : setUp) {
+        m_pControllerManager->setUpDevice(*pDevice);
     }
 }
 
@@ -296,14 +364,22 @@ LibremidiEnumerator::LibremidiEnumerator(
         UserSettingsPointer pConfig, ControllerManager* pControllerManager)
         : m_pConfig(pConfig),
           m_pControllerManager(pControllerManager) {
+    m_settleTimer.setSingleShot(true);
+    m_settleTimer.setInterval(kHotplugSettleMs);
+    connect(&m_settleTimer, &QTimer::timeout, this, &LibremidiEnumerator::flushScheduled);
+
     m_observer = libremidi::observer{
             libremidi::observer_configuration{
                     .input_added =
                             [this](const libremidi::input_port& port) {
                                 QMetaObject::invokeMethod(this, [this, port]() {
-                                    Controller* pController = addInput(port);
-                                    if (pController) {
-                                        m_pControllerManager->addDevice(pController);
+                                    if (!m_queried) {
+                                        return; // covered by queryDevices()
+                                    }
+                                    if (auto* pController = addInput(port)) {
+                                        scheduleSetUp(static_cast<LibremidiController*>(
+                                                              pController),
+                                                true);
                                     }
                                 });
                             },
@@ -316,9 +392,13 @@ LibremidiEnumerator::LibremidiEnumerator(
                     .output_added =
                             [this](const libremidi::output_port& port) {
                                 QMetaObject::invokeMethod(this, [this, port]() {
-                                    Controller* pController = addOutput(port);
-                                    if (pController) {
-                                        m_pControllerManager->addDevice(pController);
+                                    if (!m_queried) {
+                                        return; // covered by queryDevices()
+                                    }
+                                    if (auto* pController = addOutput(port)) {
+                                        scheduleSetUp(static_cast<LibremidiController*>(
+                                                              pController),
+                                                true);
                                     }
                                 });
                             },
@@ -339,6 +419,7 @@ LibremidiEnumerator::LibremidiEnumerator(
 
 QList<Controller*> LibremidiEnumerator::queryDevices() {
     QList<Controller*> controllers;
+    m_queried = true;
     if (m_devices.empty()) {
         m_enumerating = true;
         const auto inputPorts = m_observer.get_input_ports();
