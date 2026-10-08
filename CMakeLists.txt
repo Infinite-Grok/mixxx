@@ -3858,8 +3858,27 @@ if(PORTMIDI)
   )
 endif()
 
-default_option(LIBREMIDI "Enable the Libremidi backend for MIDI controllers" "NOT ANDROID")
+# A4 APK C: libremidi is the only MIDI backend on Android (PortMidi has no
+# Android support), so it is enabled by default there as well.
+default_option(LIBREMIDI "Enable the Libremidi backend for MIDI controllers" "TRUE")
 if(LIBREMIDI)
+  if(ANDROID)
+    # Android uses the AMidi backend only. Switch off the Linux/desktop backends
+    # that libremidi would otherwise try to detect because UNIX is true there.
+    set(LIBREMIDI_NO_ALSA ON CACHE BOOL "" FORCE)
+    set(LIBREMIDI_NO_UDEV ON CACHE BOOL "" FORCE)
+    set(LIBREMIDI_NO_JACK ON CACHE BOOL "" FORCE)
+    set(LIBREMIDI_NO_PIPEWIRE ON CACHE BOOL "" FORCE)
+    set(LIBREMIDI_NO_NETWORK ON CACHE BOOL "" FORCE)
+    set(LIBREMIDI_NO_KEYBOARD ON CACHE BOOL "" FORCE)
+    # libremidi/cmake/libremidi.android.cmake requires ANDROID_NATIVE_API_LEVEL
+    # >= 31 (AMidi + JNI_GetCreatedJavaVMs). It is only defined by the NDK
+    # toolchain file; Mixxx configures with CMAKE_SYSTEM_NAME=Android instead,
+    # where the API level is CMAKE_SYSTEM_VERSION (35).
+    if(NOT ANDROID_NATIVE_API_LEVEL)
+      set(ANDROID_NATIVE_API_LEVEL "${CMAKE_SYSTEM_VERSION}")
+    endif()
+  endif()
   target_compile_definitions(mixxx-lib PUBLIC __LIBREMIDI__)
   add_subdirectory(lib/readerwriterqueue-1.0.7)
   add_subdirectory(lib/libremidi)
