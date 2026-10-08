@@ -134,9 +134,13 @@ QmlApplication::QmlApplication(
         // would be overwritten by every other Mixxx build installed on the
         // device (org.mixxx, org.mixxx.t7port, ...), each loading main.qml
         // from the other's files.
+        // The package name is read at runtime: ANDROID_PACKAGE_NAME is only
+        // defined for mixxx-lib, not for the mixxx-qml-lib target.
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        const QString packageName =
+                context.callMethod<jstring>("getPackageName").toString();
         const QString externalQmlDir =
-                QStringLiteral("/storage/emulated/0/Mixxx-%1/qml")
-                        .arg(QStringLiteral(ANDROID_PACKAGE_NAME));
+                QStringLiteral("/storage/emulated/0/Mixxx-%1/qml").arg(packageName);
         copyAssetDir(QStringLiteral("assets:/qml"), externalQmlDir);
         m_mainFilePath = externalQmlDir + QStringLiteral("/main.qml");
     }
