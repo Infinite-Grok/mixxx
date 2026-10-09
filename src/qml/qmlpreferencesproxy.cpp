@@ -474,7 +474,12 @@ bool QmlControllerDeviceProxy::save(const QmlConfigProxy* pConfig) {
         bool mappingChanged = false;
         ProductInfo productInfo;
         if (!m_productInfo.has_value()) {
-            mappingChanged = true;
+            // Only an unknown device (no mapping offered for it) needs a new
+            // product match. For a known device without a product entry (MIDI
+            // controllers are offered every MIDI mapping), changing the
+            // selected mapping or the enabled state must not rewrite the
+            // mapping file, like in the widget preferences.
+            mappingChanged = m_mappings.isEmpty();
             productInfo.vendor_id = QStringLiteral("0x%1").arg(
                     m_pInternal->getVendorId().value_or(0), 4, 16, QChar('0'));
             productInfo.product_id = QStringLiteral("0x%1").arg(
@@ -560,9 +565,8 @@ bool QmlControllerDeviceProxy::save(const QmlConfigProxy* pConfig) {
                 mapping->saveMapping(newMappingFileName);
                 emit mappingCreated(getType(), MappingInfo(QFileInfo(newMappingFileName)));
             }
-            // If the device was "known" till now
-            if (!m_productInfo.has_value()) {
-                DEBUG_ASSERT(m_mappings.isEmpty());
+            // If the device was "unknown" till now
+            if (!m_productInfo.has_value() && m_mappings.isEmpty()) {
                 m_productInfo = productInfo;
                 m_mappings.insert(m_pMapping);
                 emit deviceLearned();
