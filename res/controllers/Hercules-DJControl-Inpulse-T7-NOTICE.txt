@@ -1,0 +1,17 @@
+Hercules DJControl Inpulse T7 mapping (beta 0.9.0)
+
+Files: Hercules_DJControl_Inpulse_T7.midi.xml,
+       Hercules-DJControl-Inpulse-T7-script.js,
+       Hercules-DJControl-Inpulse-T7-platter.js
+
+Author:  Infinite-Grok (developed with AI assistance, reviewed and tested on
+         hardware by the author; see the file headers).
+Source:  https://github.com/Infinite-Grok/mixxx-hercules-t7 (main, commit
+         1ec59320c4ccf5681d5a989d9b7d0447da48aa69), copied here unmodified.
+Licence: GPL-2.0-or-later, the same as Mixxx (see COPYING at the repository
+         root). The script derives its crossfader-curve and channel layout
+         behaviour from the Hercules DJControl Inpulse 500 mapping by
+         Ev3nt1ne, DJ Phatso and resetreboot (also in this directory).
+
+Mixxx has no T7 mapping of its own, so these file names do not clash with an
+upstream mapping. The mapping targets Mixxx 2.5.6 or later.
