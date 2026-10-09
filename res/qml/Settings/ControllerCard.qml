@@ -461,7 +461,7 @@ Item {
             implicitHeight: 32
             indicator.width: 0
             model: Mixxx.ControllerManager.mappings(modelData.type)
-            popupMaxItem: showAllMappings ? 6 : matchingMappings?.length + 1
+            popupMaxItem: showAllMappings ? 6 : Math.min(6, (matchingMappings?.length ?? 0) + 1)
             spacing: 2
             width: 180
 
