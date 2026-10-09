@@ -265,8 +265,9 @@ function(fatal_error_missing_env)
   endif()
 endfunction()
 
-# A2 candidate: this guard stops WSL builds that TARGET Windows. An Android
-# cross-build from WSL is a Linux-host build and is unaffected by it.
+# Mixxx Preview (unofficial): this guard stops WSL builds that TARGET Windows.
+# An Android cross-build from WSL is a Linux-host build and must not be
+# rejected by it, because tools/android-preview/ builds the APK under WSL.
 if(UNIX AND NOT APPLE AND NOT ANDROID)
   execute_process(
     COMMAND uname -r
@@ -2413,7 +2414,7 @@ if(QT6)
     set_property(TARGET mixxx-lib PROPERTY ANDROID_ABIS "arm64-v8a")
     target_compile_definitions(
       mixxx-lib
-      PUBLIC ANDROID_PACKAGE_NAME="org.mixxx.a4libremidi"
+      PUBLIC ANDROID_PACKAGE_NAME="io.github.infinitegrok.mixxxpreview"
     )
     qt_add_executable(mixxx src/main.cpp MANUAL_FINALIZATION)
     set_property(
@@ -2422,16 +2423,24 @@ if(QT6)
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/packaging/android"
     )
     set_target_properties(mixxx PROPERTIES QT_ANDROID_ABIS "${ANDROID_ABI}")
-    # A2 candidate: separate application id/data namespace from org.mixxx and
-    # org.mixxx.t7port so installed builds are never replaced.
-    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "org.mixxx.a4libremidi")
-    # A4 APK C candidate only: libremidi's Android backend needs AMidi (API 29)
-    # and JNI_GetCreatedJavaVMs (API 31). Not for upstream, which keeps the
-    # Qt default minSdk.
+    # Mixxx Preview (unofficial): own application id, so the preview never
+    # replaces or shares data with an official Mixxx (org.mixxx) install.
+    # Qt derives the Gradle applicationId from the Java namespace (org.mixxx),
+    # which must stay for the Java classes, so tools/android-preview/
+    # assemble_release.sh sets the applicationId in the generated build.gradle.
+    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "io.github.infinitegrok.mixxxpreview")
+    # libremidi's Android backend needs AMidi (API 29) and JNI_GetCreatedJavaVMs
+    # (API 31), so the preview needs minSdk 31. Upstream keeps the Qt default.
     set_target_properties(mixxx PROPERTIES QT_ANDROID_MIN_SDK_VERSION 31)
+    # Preview release number. versionCode = MAJOR*1000000 + MINOR*10000 +
+    # PATCH*100 + PREVIEW (0.1.0-preview.1 -> 10001); it must only ever grow.
+    set(MIXXX_ANDROID_PREVIEW_VERSION_NAME "0.1.0-preview.1" CACHE STRING "Android preview versionName")
+    set(MIXXX_ANDROID_PREVIEW_VERSION_CODE "10001" CACHE STRING "Android preview versionCode")
     set_target_properties(
       mixxx
-      PROPERTIES QT_ANDROID_VERSION_NAME "${MIXXX_VERSION}"
+      PROPERTIES
+        QT_ANDROID_VERSION_NAME "${MIXXX_ANDROID_PREVIEW_VERSION_NAME}"
+        QT_ANDROID_VERSION_CODE "${MIXXX_ANDROID_PREVIEW_VERSION_CODE}"
     )
     set_target_properties(
       mixxx
