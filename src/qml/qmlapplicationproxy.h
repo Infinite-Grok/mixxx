@@ -71,8 +71,8 @@ class QmlApplicationProxy : public QObject {
     /// QQuickOverlay, or nullptr if none is open. If the popup object cannot
     /// be resolved, its popup item is returned instead.
     Q_INVOKABLE QObject* topmostPopup(QQuickItem* pOverlay) const;
-    /// Closes a popup returned by topmostPopup().
-    Q_INVOKABLE void closePopup(QObject* pPopup) const;
+    /// Closes a popup returned by topmostPopup(). Returns false if nothing was closed.
+    Q_INVOKABLE bool closePopup(QObject* pPopup) const;
 
     /// Android: called from the Java UI thread when the system Back action
     /// is requested. Emits backRequested() on the Qt main thread.

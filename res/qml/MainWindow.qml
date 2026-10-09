@@ -30,19 +30,32 @@ Item {
     // the first page of the category. With nothing open, ask for confirmation
     // before quitting.
     function handleBack() {
+        // A popup opened inside Preferences (ComboBox, ...) is closed first;
+        // Preferences itself and the quit dialog are handled explicitly.
         const popup = Mixxx.Application.topmostPopup(Overlay.overlay);
-        if (popup === settingsPopup) {
+        if (popup && popup !== settingsPopup && popup !== quitDialog) {
+            if (Mixxx.Application.closePopup(popup)) {
+                return;
+            }
+        }
+        if (quitDialog.opened) {
+            quitDialog.close();
+            return;
+        }
+        if (settingsPopup.opened) {
             const category = settingsPopup.activeCategory;
             if (category && category.selectedIndex > 0) {
                 category.selectedIndex = 0;
             } else {
                 settingsPopup.close();
             }
-        } else if (popup) {
-            Mixxx.Application.closePopup(popup);
-        } else {
-            quitDialog.open();
+            return;
         }
+        if (popup) {
+            Mixxx.Application.closePopup(popup);
+            return;
+        }
+        quitDialog.open();
     }
 
     Dialog {

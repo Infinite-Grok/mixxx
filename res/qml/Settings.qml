@@ -198,13 +198,43 @@ Popup {
                 Layout.fillHeight: true
                 Layout.fillWidth: true
 
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
+                Item {
+                    Layout.fillWidth: true
                     Layout.preferredHeight: 36
-                    color: Theme.white
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                    text: "Settings"
+
+                    Text {
+                        anchors.centerIn: parent
+                        color: Theme.white
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                        text: "Settings"
+                    }
+                    Rectangle {
+                        id: closeButton
+
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        border.color: Theme.white
+                        border.width: 1
+                        color: closeMouse.pressed ? Theme.midGray : Theme.darkGray3
+                        height: 32
+                        radius: 4
+                        width: 72
+
+                        Text {
+                            anchors.centerIn: parent
+                            color: Theme.white
+                            font.pixelSize: 16
+                            text: qsTr("Done")
+                        }
+                        MouseArea {
+                            id: closeMouse
+
+                            anchors.fill: parent
+
+                            onClicked: root.close()
+                        }
+                    }
                 }
                 Rectangle {
                     id: tabBar
