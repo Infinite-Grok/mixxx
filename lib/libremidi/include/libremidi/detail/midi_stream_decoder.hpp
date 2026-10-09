@@ -110,6 +110,7 @@ struct input_state_machine : input_state_machine_base<input_configuration>
     message.bytes.clear();
     message.timestamp = {};
     m_state = main;
+    m_sysex_overflow = false;
   }
 
   bool has_finished_sysex(std::span<const uint8_t> bytes) const noexcept
@@ -144,11 +145,12 @@ private:
     int64_t n_bytes = bytes.size();
     int64_t i_byte = 0;
 
-    const bool finished_sysex = has_finished_sysex(bytes);
     switch (m_state)
     {
       case in_sysex: {
-        return on_continue_sysex(cb, bytes, finished_sysex);
+        // A SysEx from the previous chunk: its end is somewhere in this one.
+        i_byte = on_continue_sysex_multi(cb, bytes, i_byte, timestamp);
+        [[fallthrough]];
       }
       case main: {
         while (i_byte < n_bytes)
@@ -169,24 +171,16 @@ private:
             size = 3;
           else if (status == 0xF0)
           {
-            if (configuration.ignore_sysex)
-            {
-              size = 0;
-              i_byte = n_bytes;
-            }
-            else
-            {
-              size = n_bytes - i_byte;
-            }
-
-            if (bytes[n_bytes - 1] != 0xF7)
-            {
-              // We know per CoreMIDI API there can't be anything else in this packet
-              m_state = in_sysex;
-              message.assign(bytes.begin(), bytes.begin() + size);
-              message.timestamp = timestamp;
-              return;
-            }
+            // The SysEx ends at its 0xF7, which is not necessarily the last byte of the
+            // chunk: it can be followed by other messages.
+            m_state = in_sysex;
+            m_sysex_overflow = false;
+            message.clear();
+            message.timestamp = timestamp;
+            if (!configuration.ignore_sysex)
+              message.bytes.push_back(0xF0);
+            i_byte = on_continue_sysex_multi(cb, bytes, i_byte + 1, timestamp);
+            continue;
           }
           else if (status == 0xF1)
           {
@@ -252,6 +246,76 @@ private:
         }
       }
     }
+  }
+
+  // A SysEx larger than this is dropped.
+  static constexpr std::size_t max_sysex_size = 1024 * 1024;
+
+  // Consumes what belongs to the SysEx being received, starting at `i_byte`, up to its 0xF7 or the
+  // end of the chunk. Returns the index of the first byte left to parse as a regular message.
+  int64_t on_continue_sysex_multi(
+      const message_callback& cb, std::span<const uint8_t> bytes, int64_t i_byte,
+      int64_t timestamp)
+  {
+    const int64_t n_bytes = bytes.size();
+    while (m_state == in_sysex && i_byte < n_bytes)
+    {
+      // Data bytes up to the next status byte belong to the SysEx.
+      int64_t end = i_byte;
+      while (end < n_bytes && !(bytes[end] & 0x80))
+        end++;
+
+      if (!configuration.ignore_sysex && !m_sysex_overflow)
+      {
+        if (message.bytes.size() + (end - i_byte) <= max_sysex_size)
+        {
+          message.bytes.insert(message.bytes.end(), bytes.begin() + i_byte, bytes.begin() + end);
+        }
+        else
+        {
+          // Too large: drop it, and the rest of it.
+          m_sysex_overflow = true;
+          message.clear();
+        }
+      }
+      i_byte = end;
+      if (i_byte >= n_bytes)
+        break; // continues in the next chunk
+
+      const auto status = bytes[i_byte];
+      if (status == 0xF7)
+      {
+        m_state = main;
+        if (!configuration.ignore_sysex && !m_sysex_overflow)
+        {
+          message.bytes.push_back(0xF7);
+          cb(std::move(message));
+        }
+        message.clear();
+        i_byte++;
+      }
+      else if (status >= 0xF8)
+      {
+        // A real-time message can be interleaved with the SysEx and does not end it.
+        const bool ignored = (status == 0xF8 && configuration.ignore_timing)
+                             || (status == 0xFE && configuration.ignore_sensing);
+        if (!ignored)
+        {
+          libremidi::message realtime;
+          realtime.bytes.push_back(status);
+          realtime.timestamp = timestamp;
+          cb(std::move(realtime));
+        }
+        i_byte++;
+      }
+      else
+      {
+        // Any other status byte aborts the SysEx and starts a new message.
+        m_state = main;
+        message.clear();
+      }
+    }
+    return i_byte;
   }
 
   void on_continue_sysex(
@@ -349,6 +413,7 @@ private:
     main,
     in_sysex
   } m_state{main};
+  bool m_sysex_overflow{false};
 };
 }
 

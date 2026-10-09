@@ -167,6 +167,11 @@ public:
         .has_samples = false,
     };
 
+    // One decoder per poll thread, so every open starts with a clean parser state (a SysEx
+    // left half-received by a previous open cannot swallow the new session's input), and a
+    // detached old poll thread never shares it with the new one.
+    midi1::input_state_machine processing{this->configuration};
+
     uint8_t buffer[1024];
     int32_t op_code;
     int64_t timestamp;
@@ -212,9 +217,9 @@ public:
         {
           const auto to_ns = [=] { return timestamp; };
 
-          m_processing.on_bytes_multi(
+          processing.on_bytes_multi(
               {buffer, buffer + num_bytes},
-              m_processing.timestamp<timestamp_info>(to_ns, timestamp));
+              processing.timestamp<timestamp_info>(to_ns, timestamp));
         }
       }
     }
@@ -286,7 +291,6 @@ private:
   std::atomic<bool> loss_reported{false}; // on_error was told about it
   std::shared_ptr<poll_state> poll;
   std::atomic<jlong> token{0};
-  midi1::input_state_machine m_processing{this->configuration};
 };
 }
 }
