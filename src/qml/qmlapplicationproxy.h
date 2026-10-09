@@ -4,13 +4,13 @@
 #include <QObject>
 #include <QPointer>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QUrl>
 #include <functional>
 #include <memory>
 
 #include "preferences/usersettings.h"
 
-class QQuickItem;
 class KeyboardEventFilter;
 class VinylControlManager;
 
