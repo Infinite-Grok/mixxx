@@ -436,8 +436,16 @@ void QmlControllerDeviceProxy::clear() {
             m_pMapping = pMapping;
         }
     }
-    if (!m_pMapping && !m_mappings.isEmpty()) {
-        m_pMapping = *m_mappings.cbegin();
+    if (!m_pMapping) {
+        // No loaded mapping: preselect deterministically the mapping named like
+        // the device, otherwise none (QSet order is arbitrary).
+        const QString deviceName = m_pInternal->getName();
+        for (const auto& pMapping : std::as_const(m_mappings)) {
+            if (pMapping->getName().compare(deviceName, Qt::CaseInsensitive) == 0) {
+                m_pMapping = pMapping;
+                break;
+            }
+        }
     }
     emit mappingChanged();
     // FIXME if using a mapping that didn't match the product, we need to fetch
