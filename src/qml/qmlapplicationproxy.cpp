@@ -1,6 +1,11 @@
 #include "qml/qmlapplicationproxy.h"
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QKeyEvent>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <algorithm>
 
 #include "config.h"
 #include "controllers/keyboard/keyboardeventfilter.h"
@@ -22,6 +27,7 @@ namespace qml {
 
 QmlApplicationProxy::QmlApplicationProxy(QObject* pParent)
         : QObject(pParent) {
+    s_pInstance = this;
     VERIFY_OR_DEBUG_ASSERT(s_pKeyboardEventFilter) {
         return;
     }
@@ -185,6 +191,67 @@ QString QmlApplicationProxy::menuShortcut(
 void QmlApplicationProxy::reloadSkin() {
     if (s_reloadCallback) {
         s_reloadCallback();
+    }
+}
+
+void QmlApplicationProxy::requestBack() {
+    // Called from the Android UI thread: hop to the thread of the proxy.
+    QmlApplicationProxy* pInstance = s_pInstance.data();
+    if (pInstance) {
+        QMetaObject::invokeMethod(
+                pInstance, &QmlApplicationProxy::backRequested, Qt::QueuedConnection);
+    }
+}
+
+QObject* QmlApplicationProxy::topmostPopup(QQuickItem* pOverlay) const {
+    if (!pOverlay) {
+        return nullptr;
+    }
+    // The popup items are children of the overlay; the last one in paint
+    // order is the topmost.
+    const QList<QQuickItem*> items = pOverlay->childItems();
+    QList<QQuickItem*> ordered;
+    for (QQuickItem* pItem : items) {
+        if (pItem->isVisible() &&
+                qstrcmp(pItem->metaObject()->className(), "QQuickPopupItem") == 0) {
+            ordered.append(pItem);
+        }
+    }
+    if (ordered.isEmpty()) {
+        return nullptr;
+    }
+    std::stable_sort(ordered.begin(), ordered.end(), [](QQuickItem* a, QQuickItem* b) {
+        return a->z() < b->z();
+    });
+    QQuickItem* pTopItem = ordered.last();
+    if (QQuickWindow* pWindow = pOverlay->window()) {
+        const QList<QObject*> candidates = pWindow->findChildren<QObject*>();
+        for (QObject* pCandidate : candidates) {
+            if (pCandidate->inherits("QQuickPopup") &&
+                    pCandidate->property("popupItem").value<QQuickItem*>() == pTopItem) {
+                return pCandidate;
+            }
+        }
+    }
+    return pTopItem;
+}
+
+void QmlApplicationProxy::closePopup(QObject* pPopup) const {
+    if (!pPopup) {
+        return;
+    }
+    if (pPopup->inherits("QQuickPopup")) {
+        QMetaObject::invokeMethod(pPopup, "close");
+        return;
+    }
+    // Popup object not reachable (e.g. a fallback dialog created internally
+    // by Qt): let the popup item handle Escape itself.
+    auto* pItem = qobject_cast<QQuickItem*>(pPopup);
+    if (pItem && pItem->window()) {
+        for (QEvent::Type type : {QEvent::KeyPress, QEvent::KeyRelease}) {
+            QKeyEvent event(type, Qt::Key_Escape, Qt::NoModifier);
+            QCoreApplication::sendEvent(pItem->window(), &event);
+        }
     }
 }
 

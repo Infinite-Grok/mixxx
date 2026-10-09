@@ -25,13 +25,65 @@ Item {
     property alias showEffects: showEffectsButton.checked
     property alias showSamplers: showSamplersButton.checked
 
-    // Closes the topmost page or popup. Returns true if something was closed.
+    // Android system Back: go back one level. Closes the topmost popup, menu
+    // or dialog; inside the preferences it first returns from a sub-page to
+    // the first page of the category. With nothing open, ask for confirmation
+    // before quitting.
     function handleBack() {
-        if (settingsPopup.opened) {
-            settingsPopup.close();
-            return true;
+        const popup = Mixxx.Application.topmostPopup(Overlay.overlay);
+        if (popup === settingsPopup) {
+            const category = settingsPopup.activeCategory;
+            if (category && category.selectedIndex > 0) {
+                category.selectedIndex = 0;
+            } else {
+                settingsPopup.close();
+            }
+        } else if (popup) {
+            Mixxx.Application.closePopup(popup);
+        } else {
+            quitDialog.open();
         }
-        return false;
+    }
+
+    Dialog {
+        id: quitDialog
+
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        title: qsTr("Close Mixxx?")
+        width: Math.min(400, root.width - 40)
+
+        background: Rectangle {
+            border.color: Theme.darkGray3
+            color: Theme.darkGray2
+            radius: 8
+        }
+        contentItem: Text {
+            color: Theme.white
+            font.pixelSize: 16
+            text: qsTr("Playback will stop.")
+            wrapMode: Text.WordWrap
+        }
+        footer: DialogButtonBox {
+            Button {
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                text: qsTr("Cancel")
+            }
+            Button {
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                text: qsTr("Quit")
+            }
+        }
+        header: Text {
+            color: Theme.white
+            font.pixelSize: 18
+            font.weight: Font.DemiBold
+            padding: 16
+            text: quitDialog.title
+        }
+
+        // Same path as the File > Quit menu action.
+        onAccepted: Qt.quit()
     }
 
     Loader {

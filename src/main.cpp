@@ -20,6 +20,7 @@
 #ifdef MIXXX_USE_QML
 #include "mixer/playermanager.h"
 #include "qml/qmlapplication.h"
+#include "qml/qmlapplicationproxy.h"
 #include "waveform/guitick.h"
 #include "waveform/visualsmanager.h"
 #include "waveform/waveformwidgetfactory.h"
@@ -205,6 +206,15 @@ JNIEXPORT bool JNICALL
 Java_org_qtproject_qt_android_QtNativeAccessibility_accessibilitySupported(JNIEnv*, jobject) {
     return false;
 }
+
+#ifdef MIXXX_USE_QML
+// Called by org.mixxx.MainActivity when the system Back action is requested
+// (OnBackInvokedCallback, or onBackPressed on older Android versions).
+JNIEXPORT void JNICALL
+Java_org_mixxx_MainActivity_nativeOnBackRequested(JNIEnv*, jobject) {
+    mixxx::qml::QmlApplicationProxy::requestBack();
+}
+#endif
 }
 #endif
 

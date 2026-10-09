@@ -2,6 +2,7 @@
 
 #include <QJSEngine>
 #include <QObject>
+#include <QPointer>
 #include <QQmlEngine>
 #include <QUrl>
 #include <functional>
@@ -9,6 +10,7 @@
 
 #include "preferences/usersettings.h"
 
+class QQuickItem;
 class KeyboardEventFilter;
 class VinylControlManager;
 
@@ -65,6 +67,16 @@ class QmlApplicationProxy : public QObject {
     Q_INVOKABLE QString menuShortcut(
             const QString& command, const QString& defaultShortcut) const;
     Q_INVOKABLE void reloadSkin();
+    /// Returns the topmost open popup (Popup, Menu, Dialog, ...) of the given
+    /// QQuickOverlay, or nullptr if none is open. If the popup object cannot
+    /// be resolved, its popup item is returned instead.
+    Q_INVOKABLE QObject* topmostPopup(QQuickItem* pOverlay) const;
+    /// Closes a popup returned by topmostPopup().
+    Q_INVOKABLE void closePopup(QObject* pPopup) const;
+
+    /// Android: called from the Java UI thread when the system Back action
+    /// is requested. Emits backRequested() on the Qt main thread.
+    static void requestBack();
 
     static QmlApplicationProxy* create(QQmlEngine* pQmlEngine, QJSEngine* pJsEngine);
     static void registerUserSettings(UserSettingsPointer pConfig) {
@@ -90,10 +102,13 @@ class QmlApplicationProxy : public QObject {
     void menuShortcutsChanged();
     void statsModeChanged();
     void debuggerEnabledChanged();
+    /// The system Back action (Android) was requested.
+    void backRequested();
 
   private:
     QUrl documentationUrl(const QString& fileName, const QString& onlineUrl) const;
 
+    static inline QPointer<QmlApplicationProxy> s_pInstance;
     static inline UserSettingsPointer s_pConfig;
     static inline std::shared_ptr<KeyboardEventFilter> s_pKeyboardEventFilter;
     static inline VinylControlManager* s_pVinylControlManager{nullptr};

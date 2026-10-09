@@ -38,14 +38,14 @@ ApplicationWindow {
 
     Component.onCompleted: root.updateVisibility()
 
-    // Android system Back: close the topmost page or popup, but never quit.
-    // The activity itself ignores Back (MainActivity.onBackPressed).
-    Shortcut {
-        context: Qt.ApplicationShortcut
-        enabled: root.isMobile
-        sequence: "Back"
+    // Android system Back, forwarded by MainActivity (OnBackInvokedCallback or
+    // onBackPressed). Never quits directly: see MainWindow.handleBack().
+    Connections {
+        target: Mixxx.Application
 
-        onActivated: content.item?.handleBack()
+        function onBackRequested() {
+            content.item?.handleBack();
+        }
     }
 
     Loader {
