@@ -1,0 +1,71 @@
+name: Controller report
+description: Tell us what works and what does not with your controller (good or bad, both help)
+labels: ["controller"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only class-compliant USB MIDI controllers are expected to work. HID and bulk-only controllers are not supported on Android yet;
+        reports about them are welcome but known to fail.
+  - type: input
+    id: version
+    attributes:
+      label: Preview version
+      placeholder: 0.1.0-preview.1
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone or tablet, and Android version
+      placeholder: "Pixel 8, Android 15"
+    validations:
+      required: true
+  - type: input
+    id: controller
+    attributes:
+      label: Controller (make, model, firmware if known)
+      placeholder: "Hercules DJControl Inpulse T7"
+    validations:
+      required: true
+  - type: input
+    id: connection
+    attributes:
+      label: How is it connected?
+      description: Cable, hub, OTG adapter, powered or bus powered.
+  - type: input
+    id: mapping
+    attributes:
+      label: Mapping you selected in Preferences > Controllers
+      placeholder: "Hercules DJControl Inpulse T7 (built in)"
+    validations:
+      required: true
+  - type: dropdown
+    id: detected
+    attributes:
+      label: Does the controller appear in Preferences > Controllers?
+      options: ["Yes, and it works", "Yes, but it does not work", "No"]
+    validations:
+      required: true
+  - type: textarea
+    id: works
+    attributes:
+      label: What works
+      description: Pads, faders, knobs, jog wheels, buttons, lamps and lights, audio through the controller's sound card.
+  - type: textarea
+    id: broken
+    attributes:
+      label: What does not work, or behaves oddly
+  - type: textarea
+    id: hotplug
+    attributes:
+      label: Unplug and replug
+      description: Does it come back by itself (with Preferences closed)? Does it work right after a cold start of the app?
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Start the app, reproduce the problem, then from a computer with USB debugging on run `adb logcat -d > logcat.txt` and attach the file.
+        For a detailed controller trace the app can be started with the argument `--controller-debug`; this makes the log large, so only do it when asked.
+        Please remove anything private from the log before attaching it.

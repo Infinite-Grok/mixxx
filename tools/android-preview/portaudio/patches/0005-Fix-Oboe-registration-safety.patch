@@ -1,0 +1,68 @@
+diff --git a/src/hostapi/oboe/pa_oboe.cpp b/src/hostapi/oboe/pa_oboe.cpp
+index 62355a6..55d2bdd 100644
+--- a/src/hostapi/oboe/pa_oboe.cpp
++++ b/src/hostapi/oboe/pa_oboe.cpp
+@@ -58,6 +58,10 @@
+ #include "pa_util.h"
+ 
+ #include <mutex>
++#include <memory>
++#include <new>
++#include <cstdlib>
++#include <utility>
+ #include <pthread.h>
+ #include <ctime>
+ #include <cstring>
+@@ -274,7 +278,7 @@ private:
+ 
+     unsigned long getLowBufferSize() const;
+     struct RegisteredDevice {
+-        char* name;
++        std::unique_ptr<char, decltype(&free)> name;
+         int32_t id;
+         PaOboe_Direction direction;
+         int channelCount;
+@@ -764,14 +768,26 @@ PaErrorCode OboeEngine::registerDevice(const char* name, int32_t id, PaOboe_Dire
+     if (mHasInitialised){
+         return paCanNotInitializeRecursively;
+     }
+-    mRegisteredDevices.emplace_back(RegisteredDevice{
+-        (char*)malloc(sizeof(char)*strlen(name)),
+-        id,
+-        direction,
+-        channelCount,
+-        sampleRate,
+-    });
+-    strcpy(mRegisteredDevices.back().name, name);
++    if (!name) {
++        return paBadBufferPtr;
++    }
++    const size_t nameSize = strlen(name) + 1;
++    std::unique_ptr<char, decltype(&free)> copiedName((char*)malloc(nameSize), &free);
++    if (!copiedName) {
++        return paInsufficientMemory;
++    }
++    memcpy(copiedName.get(), name, nameSize);
++    try {
++        mRegisteredDevices.emplace_back(RegisteredDevice{
++            std::move(copiedName),
++            id,
++            direction,
++            channelCount,
++            sampleRate,
++        });
++    } catch (const std::bad_alloc&) {
++        return paInsufficientMemory;
++    }
+     return paNoError;
+ }
+ 
+@@ -804,7 +820,7 @@ PaErrorCode OboeEngine::initializeDeviceList(PaUtilHostApiRepresentation *hostAp
+         PaDeviceInfo *deviceInfo = &deviceInfoArray[i];
+         deviceInfo->structVersion = 2;
+         deviceInfo->hostApi = hostApiIndex;
+-        deviceInfo->name = registeredDevice.name;
++        deviceInfo->name = registeredDevice.name.get();
+ 
+         deviceInfo->maxOutputChannels = registeredDevice.direction == PaOboe_Direction::Output ? registeredDevice.channelCount : 0;
+         deviceInfo->maxInputChannels = registeredDevice.direction == PaOboe_Direction::Input ? registeredDevice.channelCount : 0;

@@ -1,5 +1,5 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
-  - name: 🤔 Question
+  - name: Official Mixxx (desktop and upstream questions)
     url: https://mixxx.org/forums
-    about: Please use our forums for questions
+    about: This is an unofficial preview of Android work. Do not report problems with this build to the Mixxx project.

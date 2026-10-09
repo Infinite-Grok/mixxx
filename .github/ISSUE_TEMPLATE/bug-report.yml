@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Mixxx Preview (unofficial) crashes, freezes or misbehaves
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is an **unofficial preview** of Android work on Mixxx. Please report problems here, not to the Mixxx project.
+        Controller problems: use the "Controller report" form instead.
+  - type: input
+    id: version
+    attributes:
+      label: Preview version
+      description: Shown in the release name, for example 0.1.0-preview.1 (Android Settings > Apps > Mixxx Preview > App info).
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone or tablet, and Android version
+      placeholder: "Samsung Galaxy Z Fold7, Android 17"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Does it happen every time, or sometimes?
+  - type: dropdown
+    id: audio
+    attributes:
+      label: Audio output in use
+      options: [Phone speaker or headphone jack, USB audio device, Bluetooth, Not sure]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        With a computer and USB debugging on: `adb logcat -d > logcat.txt` right after the problem, and attach it.
+        Without a computer: describe what you saw; the app's own log is in its private folder and is not reachable without adb.
+        Please remove anything private from the log before attaching it.
