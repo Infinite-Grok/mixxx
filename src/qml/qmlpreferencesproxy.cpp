@@ -430,12 +430,13 @@ void QmlControllerDeviceProxy::clear() {
     emit visualUrlChanged();
 
     std::shared_ptr<LegacyControllerMapping> pSelectedMapping = m_pInternal->getMapping();
+    m_pMapping = nullptr;
     for (const auto& pMapping : std::as_const(m_mappings)) {
         if (pSelectedMapping && pSelectedMapping->filePath() == pMapping->definition().getPath()) {
             m_pMapping = pMapping;
         }
     }
-    if (!m_mappings.isEmpty()) {
+    if (!m_pMapping && !m_mappings.isEmpty()) {
         m_pMapping = *m_mappings.cbegin();
     }
     emit mappingChanged();
@@ -698,7 +699,18 @@ void QmlControllerManagerProxy::refreshKnownDevices() {
                 });
         m_knownControllers.append(pController);
         QmlControllerDeviceProxy* device;
-        if (foundDevice != m_knownDevices.constKeyValueEnd()) {
+        // MIDI products cannot be matched by vendor/product id (neither the
+        // mapping parser nor the MIDI backends provide them), so offer every
+        // MIDI mapping for MIDI controllers, like the widget preferences do.
+        if (pController->getDataRepresentationProtocol() == DataRepresentationProtocol::MIDI) {
+            const auto midiMappings =
+                    m_knownMappings.value(QmlControllerDeviceProxy::Type::MIDI);
+            device = new QmlControllerDeviceProxy(pController,
+                    std::nullopt,
+                    QSet<QmlControllerMappingProxy*>(midiMappings.cbegin(), midiMappings.cend()),
+                    this);
+            m_knownDevicesFound.append(device);
+        } else if (foundDevice != m_knownDevices.constKeyValueEnd()) {
             device = new QmlControllerDeviceProxy(
                     pController, foundDevice->first, foundDevice->second, this);
             m_knownDevicesFound.append(device);
