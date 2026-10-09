@@ -226,8 +226,11 @@ QmlApplication::QmlApplication(
         QPushButton* continueButton =
                 msgBox.addButton(tr("Ok"), QMessageBox::ActionRole);
         msgBox.exec();
-        m_pCoreServices.reset();
-        exit(-1);
+        // Do not call exit() from here: static destruction would run while
+        // CoreServices (and the thread-local DB connection) is still alive.
+        // Let runMixxx() take its !isReady() path and shut down cleanly.
+        m_loadSucceeded = false;
+        return;
     }
 
     SoundDeviceStatus result = m_pCoreServices->getSoundManager()->setupDevices();
@@ -235,7 +238,9 @@ QmlApplication::QmlApplication(
         const int reInt = static_cast<int>(result);
         qCritical() << "Error setting up sound devices:" << reInt;
 #ifndef Q_OS_ANDROID
-        exit(reInt);
+        // Same as above: report failure through isReady() instead of exit().
+        m_loadSucceeded = false;
+        return;
 #endif
     }
 
