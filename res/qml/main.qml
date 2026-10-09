@@ -38,6 +38,16 @@ ApplicationWindow {
 
     Component.onCompleted: root.updateVisibility()
 
+    // Android system Back: close the topmost page or popup, but never quit.
+    // The activity itself ignores Back (MainActivity.onBackPressed).
+    Shortcut {
+        context: Qt.ApplicationShortcut
+        enabled: root.isMobile
+        sequence: "Back"
+
+        onActivated: content.item?.handleBack()
+    }
+
     Loader {
         id: content
 

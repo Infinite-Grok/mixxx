@@ -25,6 +25,15 @@ Item {
     property alias showEffects: showEffectsButton.checked
     property alias showSamplers: showSamplersButton.checked
 
+    // Closes the topmost page or popup. Returns true if something was closed.
+    function handleBack() {
+        if (settingsPopup.opened) {
+            settingsPopup.close();
+            return true;
+        }
+        return false;
+    }
+
     Loader {
         id: nativeApplicationMenuLoader
 

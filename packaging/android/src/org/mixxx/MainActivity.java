@@ -24,4 +24,13 @@ public class MainActivity extends QtActivityBase {
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         windowInsetsController.hide(WindowInsetsCompat.Type.navigationBars());
     }
+
+    // Back must never finish the activity: Mixxx is a live DJ tool and an
+    // accidental swipe would stop the audio. Qt has already offered the
+    // Key_Back event to QML (see main.qml) before this is reached.
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        // Intentionally ignored.
+    }
 }
