@@ -20,7 +20,11 @@ The preview does not patch the downloaded zip. Instead:
 3. `03_install_portaudio.sh` replaces **one file**, `installed/arm64-android/lib/libportaudio.a`, in your extracted
    copy and records before/after hashes.
 
-Result of the original candidate build:  sha256 . The preview rerun of these scripts (different scratch path) gave a different hash, because the objects embed the build path in assertion strings; it has the same 16 archive members and the same patched source hash. The archive original is . Compare s checks (patched  hash, archive members, no  import in ) instead of the library hash.
+Result of the original candidate build: `libportaudio.a` sha256 `44182eb98f0253cf8444d3339149db4ae819e7420ea1b6c7b47b7a48940646c0`.
+The preview rerun of these scripts (different scratch path) gave a different hash, because the objects embed the build
+path in assertion strings; it has the same 16 archive members and the same patched source hash. The archive original is
+`cf42a47ad5c0a61422b86df3a6bad98148556fd0b480a49378b2e44e56614e7c`. Compare the checks in `portaudio/README.md`
+(patched `pa_oboe.cpp` hash, archive members, no `strcpy` import in `pa_oboe.cpp.o`) rather than the library hash.
 
 ## Prerequisites
 
