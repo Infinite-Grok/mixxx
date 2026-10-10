@@ -1,8 +1,9 @@
 # Building Mixxx Preview (unofficial) for Android
 
-These scripts build the arm64 release APK from a Linux or WSL Ubuntu host. They were used for the published
-preview builds; every step has been run in that order. They are plain bash with no hidden state: all paths come
-from `env.sh` and can be overridden from the environment.
+These scripts build the arm64 release APK from a Linux or WSL Ubuntu host. They were used for local preview
+candidates, including the signed rc4 test APK; no preview release has been published. Every step has been run
+in that order. They are plain bash with no hidden state: all paths come from `env.sh` and can be overridden
+from the environment.
 
 ## Why there are extra steps (the PortAudio repair)
 

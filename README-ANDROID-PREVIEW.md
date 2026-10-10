@@ -41,11 +41,13 @@ Inpulse T7 over USB (class-compliant MIDI via libremidi), earlier build C5. Resu
 - Cold start: the controller delivers input at start (12 of 12 starts with the SysEx latch fix; 10 of 12 failed without it).
 - Playback continues in the background.
 
-Back button: on the main screen (Back asks before quitting) this was tested on the device. The later fix for a crash
-on Back inside Preferences (Back now closes Preferences; Preferences also got a Done button) was checked on source
-only. Not yet shown on a device: the signed release build itself, AAC/M4A playback with the new decoder, other
-phones, other controllers, other Android versions, long sessions, phone calls and other audio interruptions.
-Nothing here is a statement about audio latency or quality.
+The signed rc4 APK was installed on a Galaxy Z Fold7 with a fresh profile. With the T7 attached before launch,
+its mapping enabled at startup and an AAC-LC M4A test tone played audibly in headphones without manual controller
+or sound setup. J also reported that the Back button works on rc4; the exact navigation path was not logged.
+The first-run Main output is under investigation. Still untested on rc4: preservation of existing saved sound
+and controller choices, T7 unplug/replug, AAC seeking and gapless playback, other phones and controllers,
+long sessions, phone calls, and other audio interruptions. A future APK built from this clean source history
+will need its own device smoke test. Nothing here is a statement about audio latency or quality.
 
 ## First-run setup in the current source
 
@@ -53,8 +55,8 @@ When there is no saved sound configuration, Android chooses the Oboe output. If 
 offers at least four output channels, it assigns Main to channels 1–2 and Headphones to 3–4;
 otherwise it uses the first stereo output for Main. A controller with no stored controller
 choice can select and enable its one matching bundled MIDI mapping at startup. Existing sound
-and controller choices are intended to remain intact. These changes were built in rc4, but
-an independent upgrade-preservation review and the T7 replug check are still pending.
+and controller choices are intended to remain intact. These changes were built in rc4;
+independent upgrade-preservation review and the T7 replug check are still pending.
 
 ## Known issues
 
@@ -67,8 +69,8 @@ an independent upgrade-preservation review and the T7 replug check are still pen
 - **No FDK-AAC.** The preview contains no Fraunhofer FDK AAC code (its licence is considered GPL-incompatible).
   M4A/AAC files are decoded by FFmpeg's own LGPL AAC decoder. Mixxx's optional AAC/HE-AAC recording and
   broadcasting encoder needs a user-installed libfdk-aac and is therefore unavailable (the other recording
-  and broadcasting formats are unaffected). AAC playback through the native decoder has been checked in the build (codec symbols), not yet
-  on a device: M4A files are untested on hardware.
+  and broadcasting formats are unaffected). One AAC-LC M4A test tone loaded and played audibly in headphones
+  on the Fold with the signed rc4 APK. Seeking, gapless playback, and other AAC variants remain untested.
 - Preview quality: the new QML interface is work in progress upstream, and expect rough edges.
 - A one-off crash in Qt SQL static destructors was seen at exit in a build before the clean-shutdown fix; if you
   see a crash on Quit, please report it.
