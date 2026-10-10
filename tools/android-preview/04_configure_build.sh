@@ -20,5 +20,21 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
     -DBUILD_TESTING=OFF -DBUILD_BENCH=OFF
 fi
 echo "CONFIGURED $(date -u +%FT%TZ)"
+# Qt Multimedia ships a prebuilt FFmpeg backend plugin (libplugins_multimedia_ffmpegmediaplugin) that statically
+# contains FFmpeg WITH Fraunhofer FDK-AAC. Do not bundle it: Qt Multimedia then uses its Android MediaPlayer plugin
+# (libplugins_multimedia_androidmediaplugin), which is already bundled. Mixxx itself decodes audio with its own
+# FFmpeg (step 3b) and plays through PortAudio, so only QML media items are affected.
+python3 - "$B/android-mixxx-deployment-settings.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+key = "android-deploy-plugins"
+parts = [x for x in d[key].split(";") if x and "ffmpegmediaplugin" not in x]
+d[key] = ";".join(parts)
+json.dump(d, open(p, "w"), indent=3)
+print("deployment plugins without ffmpegmediaplugin:", len(parts))
+PYEOF
+# androiddeployqt copies into android-build/libs and does not delete stale files, so remove any earlier copy.
+rm -f "$B"/android-build/libs/arm64-v8a/libplugins_multimedia_ffmpegmediaplugin*
 nice -n 10 cmake --build "$B" --target apk -j "$NINJA_JOBS"
 echo "APK_TARGET_DONE $(date -u +%FT%TZ)"

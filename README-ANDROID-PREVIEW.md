@@ -51,6 +51,11 @@ Nothing here is a statement about audio latency or quality.
 - **Unplugging a controller while its Preferences page is open** is not handled (inherited from #16135).
 - **HID and bulk-only controllers are not supported on Android yet.** Only class-compliant USB MIDI controllers work
   (through Android's MIDI API). The HID/bulk code compiles in but is untested.
+- **No FDK-AAC.** The preview contains no Fraunhofer FDK AAC code (its licence is considered GPL-incompatible).
+  M4A/AAC files are decoded by FFmpeg's own LGPL AAC decoder. Mixxx's optional AAC/HE-AAC recording and
+  broadcasting encoder needs a user-installed libfdk-aac and is therefore unavailable (the other recording
+  and broadcasting formats are unaffected). AAC playback has been checked in the build (codec symbols), not yet
+  on a device.
 - Preview quality: the new QML interface is work in progress upstream, and expect rough edges.
 - A one-off crash in Qt SQL static destructors was seen at exit in a build before the clean-shutdown fix; if you
   see a crash on Quit, please report it.
@@ -81,6 +86,8 @@ Short version (details and the reason for each step are in [`tools/android-previ
 build under Linux or WSL Ubuntu, with the Android SDK and NDK 27.2.12479018, Java 17, CMake, Ninja, and about 40 GB free.
 The pinned Mixxx dependency archive contains a `libportaudio.a` without the registration repair, so the scripts
 rebuild that one library from source with the repair and put it into your own extracted copy of the archive.
+The same archive builds FFmpeg with the Fraunhofer FDK AAC library, which cannot be redistributed with GPL code, so a
+second step rebuilds FFmpeg without it (about 10 minutes) and removes FDK-AAC from your copy.
 
 ```sh
 export PREVIEW_WORK=$HOME/mixxx-preview-work
@@ -88,6 +95,7 @@ cd tools/android-preview
 bash 01_prepare_deps.sh          # download + sha256-check + extract the pinned dependency archive
 bash 02_build_portaudio.sh       # rebuild PortAudio with the repair
 bash 03_install_portaudio.sh     # put it into your extracted copy (the zip is never modified)
+bash 03b_ffmpeg_no_fdk.sh        # rebuild FFmpeg without FDK-AAC (native AAC decoder), remove fdk-aac from your copy
 bash 04_configure_build.sh       # CMake + Ninja, several hours on a laptop
 # your own signing key (see tools/android-preview/README.md):
 PREVIEW_KEYSTORE=... PREVIEW_KEYSTORE_PASSWORD_FILE=... bash 05_assemble_release.sh

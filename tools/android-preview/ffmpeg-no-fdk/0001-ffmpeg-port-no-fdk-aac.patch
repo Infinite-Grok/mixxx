@@ -1,0 +1,75 @@
+diff -ruN a/ffmpeg/0099-ffmpeg-allow-fdk-aac-free.patch b/ffmpeg/0099-ffmpeg-allow-fdk-aac-free.patch
+--- a/ffmpeg/0099-ffmpeg-allow-fdk-aac-free.patch	2026-10-09 14:49:53.797248207 -1000
++++ b/ffmpeg/0099-ffmpeg-allow-fdk-aac-free.patch	1969-12-31 14:00:00.000000000 -1000
+@@ -1,20 +0,0 @@
+-diff --git a/configure b/configure
+-index 7c78ddd302..386f30b562 100644
+---- a/configure
+-+++ b/configure
+-@@ -1876,7 +1876,6 @@ EXTERNAL_LIBRARY_GPL_LIST="
+- 
+- EXTERNAL_LIBRARY_NONFREE_LIST="
+-     decklink
+--    libfdk_aac
+-     libtls
+- "
+- 
+-@@ -1916,6 +1915,7 @@ EXTERNAL_LIBRARY_LIST="
+-     libcodec2
+-     libdav1d
+-     libdc1394
+-+    libfdk_aac
+-     libflite
+-     libfontconfig
+-     libfreetype
+diff -ruN a/ffmpeg/portfile.cmake b/ffmpeg/portfile.cmake
+--- a/ffmpeg/portfile.cmake	2026-10-09 14:49:53.797248207 -1000
++++ b/ffmpeg/portfile.cmake	2026-10-09 14:49:53.809248256 -1000
+@@ -1,8 +1,7 @@
+ set(FFMPEG_EXTRA_PATCHES "")
+ 
+-if("fedora-ffmpeg-free-safe" IN_LIST FEATURES)
+-    string(APPEND FFMPEG_EXTRA_PATCHES "0099-ffmpeg-allow-fdk-aac-free.patch")
+-endif()
++# Mixxx Preview (unofficial): FDK-AAC is NOT built. The 0099 patch (moves libfdk_aac out of FFmpeg's nonfree list)
++# is therefore not applied either.
+ 
+ vcpkg_from_github(
+     OUT_SOURCE_PATH SOURCE_PATH
+@@ -182,6 +181,13 @@
+         "bmp"
+     )
+ 
++    # Mixxx Preview (unofficial): no Fraunhofer FDK-AAC (GPL-incompatible). The Fedora lists enable libfdk_aac as the
++    # only AAC decoder, so drop it and enable FFmpeg's native LGPL AAC decoders instead (the native encoder is
++    # already in the list).
++    list(REMOVE_ITEM FFMPEG_ENABLE_DECODERS "libfdk_aac")
++    list(REMOVE_ITEM FFMPEG_ENABLE_ENCODERS "libfdk_aac")
++    list(APPEND FFMPEG_ENABLE_DECODERS "aac" "aac_latm")
++
+     list(JOIN FFMPEG_ENABLE_DECODERS "," FFMPEG_ENABLE_DECODERS)
+     list(JOIN FFMPEG_ENABLE_ENCODERS "," FFMPEG_ENABLE_ENCODERS)
+     
+@@ -507,7 +513,7 @@
+     set(WITH_DAV1D OFF)
+ endif()
+ 
+-if(("fdk-aac" IN_LIST FEATURES) OR ("fedora-ffmpeg-free-safe" IN_LIST FEATURES))
++if("fdk-aac" IN_LIST FEATURES)
+     set(OPTIONS "${OPTIONS} --enable-libfdk-aac")
+     set(WITH_AAC ON)
+ else()
+diff -ruN a/ffmpeg/vcpkg.json b/ffmpeg/vcpkg.json
+--- a/ffmpeg/vcpkg.json	2026-10-09 14:49:53.801248224 -1000
++++ b/ffmpeg/vcpkg.json	2026-10-09 14:49:53.813248273 -1000
+@@ -29,9 +29,7 @@
+   "features": {
+     "fedora-ffmpeg-free-safe": {
+       "description": "Build with the same paranoia filters used by Fedora to ensure a patent free redistribution. See https://bugzilla.redhat.com/show_bug.cgi?id=2051008",
+-      "dependencies": [
+-        "fdk-aac"
+-      ]
++      "dependencies": []
+     },
+     "all": {
+       "description": "Build with all allowed dependencies selected that are compatible with the lgpl license",

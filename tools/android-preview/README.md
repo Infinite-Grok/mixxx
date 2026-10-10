@@ -26,6 +26,38 @@ path in assertion strings; it has the same 16 archive members and the same patch
 `cf42a47ad5c0a61422b86df3a6bad98148556fd0b480a49378b2e44e56614e7c`. Compare the checks in `portaudio/README.md`
 (patched `pa_oboe.cpp` hash, archive members, no `strcpy` import in `pa_oboe.cpp.o`) rather than the library hash.
 
+## Why there is also an FFmpeg step (FDK-AAC removal)
+
+The same archive builds its FFmpeg 7.1 with `--enable-libfdk-aac` (vcpkg ports `ffmpeg` with feature
+`fedora-ffmpeg-free-safe`, which pulls in `fdk-aac 2.0.3`), so `libmixxx` would statically contain Fraunhofer's FDK AAC
+library, whose licence is widely considered incompatible with the GPL. Worse for a simple removal: that FFmpeg has
+**no native AAC decoder at all** (the Fedora-derived decoder list leaves out `aac`), so M4A playback went through
+`libfdk_aac` only.
+
+`03b_ffmpeg_no_fdk.sh` therefore:
+
+1. checks out `mixxxdj/vcpkg` at the archive's commit `1c20f84aa1ffca2ef18a7d9c6bd7cdd1f5f2e265`, copies its overlay
+   `ffmpeg` port and applies `ffmpeg-no-fdk/0001-ffmpeg-port-no-fdk-aac.patch` (drops the fdk-aac dependency and the 0099
+   patch, removes `libfdk_aac` from the decoder/encoder lists, adds the native LGPL decoders `aac` and `aac_latm`);
+2. builds only `ffmpeg[avcodec,avdevice,avfilter,avformat,core,fedora-ffmpeg-free-safe,ffmpeg,swresample,swscale]:arm64-android`
+   with the same overlay triplet, NDK and FFmpeg 7.1 sources (release and debug), about 10 minutes;
+3. checks the result (no FDK symbols, `ff_aac_decoder`/`ff_aac_encoder` present);
+4. in your extracted copy only: replaces `lib/` and `debug/lib/` `libav*.a`/`libsw*.a`, their pkg-config files and
+   `share/ffmpeg/*.cmake`, keeps the originals in `$PREVIEW_WORK/ffmpeg-archive-original/`, and moves the `fdk-aac` library,
+   headers, pkg-config and cmake files to `$PREVIEW_WORK/removed-fdk-aac/` so that Mixxx's `find_package(FdkAac)` finds nothing.
+   Before/after sha256 values go to `$PREVIEW_WORK/ffmpeg-no-fdk-integration.txt`.
+
+Qt Multimedia's prebuilt `libplugins_multimedia_ffmpegmediaplugin` also embeds FFmpeg with FDK. `04_configure_build.sh`
+removes it from the deployment list (and deletes any stale copy in `android-build/libs`), so Qt Multimedia uses its Android
+MediaPlayer plugin, which is bundled. Mixxx plays audio through its own FFmpeg and PortAudio, so only QML media items
+are affected. `06_verify_apk.sh` fails if FDK symbols or identifying strings, or that plugin, are in the APK
+(set `UNSTRIPPED_MIXXX=$PREVIEW_BUILD/libmixxx_arm64-v8a.so` to also check the exact FFmpeg codec symbols).
+
+What changes for users: Mixxx's AAC/HE-AAC recording and broadcast encoder (`EncoderFdkAac`) loads a user-installed
+`libfdk-aac` with `QLibrary` at run time; on Android none is present, so that encoder reports it is unavailable (it already
+did before: nothing installs the library on a phone). Playback of M4A/AAC now uses FFmpeg's native `aac` decoder.
+Seek accuracy and gapless behaviour should be compared on a device.
+
 ## Prerequisites
 
 - Ubuntu 24.04 or WSL2 Ubuntu 24.04 (on WSL give it at least 12 GB of memory; the preview was built with a 20 GB cap).
@@ -42,6 +74,7 @@ cd tools/android-preview
 bash 01_prepare_deps.sh        # a few minutes (downloads 3.6 GB unless BUILDENV_ZIP points to your copy)
 bash 02_build_portaudio.sh     # under a minute
 bash 03_install_portaudio.sh
+bash 03b_ffmpeg_no_fdk.sh      # about 10 minutes at 3 jobs, needs network
 nohup setsid nice -n 10 bash 04_configure_build.sh > "$PREVIEW_WORK/build.log" 2>&1 &   # 25-60 min with NINJA_JOBS=3
 ```
 

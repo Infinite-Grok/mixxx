@@ -57,13 +57,19 @@ package's copyright file (several names mean the file contains several licences,
 example for bundled parts); the authoritative text is the copyright file in the archive
 under installed/arm64-android/share/<package>/copyright.
 
-Linked into libmixxx_arm64-v8a.so (checked in the built APK): FFmpeg 7.1 (built with
---enable-libfdk-aac, so the Fraunhofer FDK AAC codec library is statically linked, under
-its own licence: see share/fdk-aac/copyright in the archive), TagLib, Rubber Band,
-libKeyFinder, FFTW and others of the table. Whether the combination of these licences
-allows redistribution of the APK is NOT settled by this file: it is listed as an open
-question for the maintainer (fdk-aac with GPL code; libkeyfinder is GPL-3.0 while Mixxx is
-GPL-2.0-or-later). The Mixxx project ships the same dependency set in its own Android CI builds.
+Linked into libmixxx_arm64-v8a.so (checked in the built APK): FFmpeg 7.1, TagLib, Rubber Band,
+libKeyFinder, FFTW and others of the table. FFmpeg is LGPL-2.1-or-later (libavutil reports
+"LGPL version 2.1 or later"; no --enable-gpl, no --enable-nonfree). The Fraunhofer FDK AAC
+codec library is NOT part of this APK: the Mixxx dependency archive builds FFmpeg with
+--enable-libfdk-aac, whose licence is widely considered incompatible with the GPL, so the
+preview rebuilds FFmpeg without it (tools/android-preview/03b_ffmpeg_no_fdk.sh, with
+FFmpeg's own LGPL "aac" decoder and encoder instead) and does not bundle Qt Multimedia's
+prebuilt FFmpeg plugin (it embeds FDK as well). The fdk-aac row below describes the
+archive, not the APK. Consequence: Mixxx's optional AAC/HE-AAC recording and broadcasting
+encoder, which needs a user-supplied libfdk-aac, is unavailable on Android. Whether the
+remaining combination of licences allows redistribution of the APK is not settled by this
+file: libkeyfinder is GPL-3.0 while Mixxx is GPL-2.0-or-later, which is an open question for the
+maintainer. The Mixxx project ships the same dependency set in its own Android CI builds.
 
 | Package | Version | Licence texts found |
 |---|---|---|
@@ -81,8 +87,8 @@ GPL-2.0-or-later). The Mixxx project ships the same dependency set in its own An
 | double-conversion | 3.4.0 | BSD |
 | egl-registry | 2025-05-27 | MIT |
 | egl | 2022-12-04 | no copyright file |
-| fdk-aac | 2.0.3 | BSD, FDK-AAC |
-| ffmpeg | 7.1 | LGPL-2.1 |
+| fdk-aac | 2.0.3 | BSD, FDK-AAC (in the archive only; removed from this APK) |
+| ffmpeg | 7.1 | LGPL-2.1 (rebuilt without FDK-AAC for this APK) |
 | fftw3 | 3.3.10 | GPL-2.0, LGPL-2.0 |
 | freetype | 2.14.3 | GPL-2.0, LGPL-2.0, Public-domain/Unlicense |
 | ghc-filesystem | 1.5.14 | MIT |
