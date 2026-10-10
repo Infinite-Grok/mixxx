@@ -659,8 +659,19 @@ Item {
             checked: modelData.enabled
             text: checked ? "On" : "Off"
 
-            onCheckedChanged: {
+            // Only a user toggle writes the state back; programmatic
+            // changes (reload after Save, open/close reported by the
+            // controller) must not feed a stale value into the proxy.
+            onToggled: {
                 modelData.enabled = checked;
+            }
+
+            Connections {
+                function onEnabledChanged() {
+                    enabledBtn.checked = modelData.enabled;
+                }
+
+                target: modelData
             }
         }
         Rectangle {

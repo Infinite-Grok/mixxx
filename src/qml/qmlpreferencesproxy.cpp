@@ -6,6 +6,7 @@
 #include <qstringliteral.h>
 #include <qvideosink.h>
 
+#include <QTimer>
 #include <QVideoFrame>
 #include <QVideoFrameFormat>
 #include <algorithm>
@@ -313,7 +314,35 @@ void QmlControllerMappingProxy::fetchMappingDetails() {
 }
 
 bool QmlControllerMappingProxy::isUserMapping(const QmlConfigProxy* pConfig) const {
-    return m_mappingDefinition.getPath().startsWith(userMappingsPath(pConfig->get()));
+    return isUserMapping(pConfig->get());
+}
+
+bool QmlControllerMappingProxy::isUserMapping(const UserSettingsPointer& pConfig) const {
+    return m_mappingDefinition.getPath().startsWith(userMappingsPath(pConfig));
+}
+
+namespace {
+QString normalizeDeviceName(QString name) {
+    name.replace(QLatin1Char('_'), QLatin1Char(' '));
+    return name.simplified().toLower();
+}
+} // namespace
+
+bool QmlControllerMappingProxy::matchesDeviceName(const QString& deviceName) const {
+    const QString wanted = normalizeDeviceName(deviceName);
+    if (wanted.isEmpty()) {
+        return false;
+    }
+    if (normalizeDeviceName(m_mappingDefinition.getName()) == wanted) {
+        return true;
+    }
+    QString baseName = QFileInfo(m_mappingDefinition.getPath()).fileName();
+    for (const QString& ext : {QStringLiteral(".xml"), QStringLiteral(".midi")}) {
+        if (baseName.endsWith(ext, Qt::CaseInsensitive)) {
+            baseName.chop(ext.size());
+        }
+    }
+    return normalizeDeviceName(baseName) == wanted;
 }
 
 QmlControllerMappingProxy::QmlControllerMappingProxy(
@@ -334,7 +363,18 @@ QmlControllerDeviceProxy::QmlControllerDeviceProxy(Controller* pInternal,
           m_enabled(pInternal->isOpen()),
           m_pMapping(nullptr) {
     clear();
-    connect(m_pInternal, &Controller::openChanged, this, &QmlControllerDeviceProxy::enabledChanged);
+    connect(m_pInternal,
+            &Controller::openChanged,
+            this,
+            [this](bool open) {
+                // Ignore the close that precedes a re-open while a committed
+                // "enabled" is still waiting for its open.
+                if (m_pendingEnabled.has_value() && *m_pendingEnabled != open) {
+                    return;
+                }
+                m_pendingEnabled.reset();
+                emit enabledChanged();
+            });
 }
 
 QmlControllerDeviceProxy::Type QmlControllerDeviceProxy::getType() const {
@@ -373,7 +413,7 @@ void QmlControllerDeviceProxy::setVisualUrl(const QUrl& url) {
     emit visualUrlChanged();
 }
 bool QmlControllerDeviceProxy::getEnabled() const {
-    return m_enabled.value_or(m_pInternal->isOpen());
+    return m_enabled.value_or(m_pendingEnabled.value_or(m_pInternal->isOpen()));
 }
 void QmlControllerDeviceProxy::setEnabled(bool state) {
     if (getEnabled() == state) {
@@ -429,24 +469,7 @@ void QmlControllerDeviceProxy::clear() {
     m_editedVisualUrl.clear();
     emit visualUrlChanged();
 
-    std::shared_ptr<LegacyControllerMapping> pSelectedMapping = m_pInternal->getMapping();
-    m_pMapping = nullptr;
-    for (const auto& pMapping : std::as_const(m_mappings)) {
-        if (pSelectedMapping && pSelectedMapping->filePath() == pMapping->definition().getPath()) {
-            m_pMapping = pMapping;
-        }
-    }
-    if (!m_pMapping) {
-        // No loaded mapping: preselect deterministically the mapping named like
-        // the device, otherwise none (QSet order is arbitrary).
-        const QString deviceName = m_pInternal->getName();
-        for (const auto& pMapping : std::as_const(m_mappings)) {
-            if (pMapping->getName().compare(deviceName, Qt::CaseInsensitive) == 0) {
-                m_pMapping = pMapping;
-                break;
-            }
-        }
-    }
+    resolveMapping();
     emit mappingChanged();
     // FIXME if using a mapping that didn't match the product, we need to fetch
     // it from COntrollerManager if (pMapping && !m_pMapping){
@@ -455,7 +478,75 @@ void QmlControllerDeviceProxy::clear() {
     // }
     clearEdited();
 }
+void QmlControllerDeviceProxy::resolveMapping() {
+    std::shared_ptr<LegacyControllerMapping> pSelectedMapping = m_pInternal->getMapping();
+    m_pMapping = nullptr;
+    for (const auto& pMapping : std::as_const(m_mappings)) {
+        if (pSelectedMapping && pSelectedMapping->filePath() == pMapping->definition().getPath()) {
+            m_pMapping = pMapping;
+        }
+    }
+    if (!m_pMapping) {
+        // No loaded mapping: preselect the one mapping named like the device
+        // (case-insensitive, spaces and underscores alike), otherwise none.
+        const auto matches = matchingMappings(m_mappings, m_pInternal->getName());
+        if (matches.size() == 1) {
+            m_pMapping = matches.first();
+        }
+    }
+}
+
+QList<QmlControllerMappingProxy*> QmlControllerDeviceProxy::matchingMappings(
+        const QSet<QmlControllerMappingProxy*>& mappings, const QString& deviceName) {
+    QList<QmlControllerMappingProxy*> matches;
+    for (auto* pMapping : mappings) {
+        if (pMapping->matchesDeviceName(deviceName)) {
+            matches.append(pMapping);
+        }
+    }
+    return matches;
+}
+
+void QmlControllerDeviceProxy::rebindMappings(const QSet<QmlControllerMappingProxy*>& mappings) {
+    QString selectedPath;
+    if (m_pMapping) {
+        selectedPath = m_pMapping->definition().getPath();
+    }
+    m_mappings = mappings;
+    m_pMapping = nullptr;
+    if (!selectedPath.isEmpty()) {
+        for (auto* pMapping : std::as_const(m_mappings)) {
+            if (pMapping->definition().getPath() == selectedPath) {
+                m_pMapping = pMapping;
+                break;
+            }
+        }
+    }
+    if (!m_pMapping && !m_edited) {
+        resolveMapping();
+    }
+    emit mappingsChanged();
+    emit mappingChanged();
+}
+
+bool QmlControllerDeviceProxy::autoApply(
+        const UserSettingsPointer& pConfig, QmlControllerMappingProxy* pMapping) {
+    VERIFY_OR_DEBUG_ASSERT(pMapping) {
+        return false;
+    }
+    m_pMapping = pMapping;
+    m_enabled = true;
+    m_edited = true;
+    emit mappingChanged();
+    emit enabledChanged();
+    return saveImpl(pConfig);
+}
+
 bool QmlControllerDeviceProxy::save(const QmlConfigProxy* pConfig) {
+    return saveImpl(pConfig->get());
+}
+
+bool QmlControllerDeviceProxy::saveImpl(const UserSettingsPointer& pConfig) {
     if (!m_edited) {
         return true;
     }
@@ -469,14 +560,14 @@ bool QmlControllerDeviceProxy::save(const QmlConfigProxy* pConfig) {
         if (!mapping) {
             mapping = LegacyControllerMappingFileHandler::loadMapping(
                     QFileInfo(m_pMapping->definition().getPath()),
-                    QDir(resourceMappingsPath(pConfig->get())));
+                    QDir(resourceMappingsPath(pConfig)));
             setInstanceFor(m_pMapping->definition().getPath(), mapping);
         }
         VERIFY_OR_DEBUG_ASSERT(mapping) {
             return false;
         }
         if (m_pMapping->hasSettings()) {
-            mapping->saveSettings(pConfig->get(), m_pInternal->getName());
+            mapping->saveSettings(pConfig, m_pInternal->getName());
         }
 
         bool mappingChanged = false;
@@ -565,7 +656,7 @@ bool QmlControllerDeviceProxy::save(const QmlConfigProxy* pConfig) {
                                 QFileInfo(m_pMapping->definition().getPath())));
             } else {
                 auto newMappingFileName =
-                        QDir(userMappingsPath(pConfig->get()))
+                        QDir(userMappingsPath(pConfig))
                                 .filePath(QFileInfo(
                                         m_pMapping->definition().getPath())
                                                 .fileName());
@@ -583,7 +674,17 @@ bool QmlControllerDeviceProxy::save(const QmlConfigProxy* pConfig) {
         }
     }
 
-    emit mappingAssigned(m_pInternal, mapping, getEnabled());
+    const bool enabled = getEnabled();
+    // Keep the committed state visible until the controller reports its
+    // open/close (queued behind the mappingAssigned slot).
+    m_pendingEnabled = enabled;
+    QTimer::singleShot(5000, this, [this]() {
+        if (m_pendingEnabled.has_value()) {
+            m_pendingEnabled.reset();
+            emit enabledChanged();
+        }
+    });
+    emit mappingAssigned(m_pInternal, mapping, enabled);
 
     clearEdited();
     return true;
@@ -677,13 +778,87 @@ void QmlControllerManagerProxy::updateExistingMapping(
         m_knownDevices.emplace(product, devices);
     }
 }
+QSet<QmlControllerMappingProxy*> QmlControllerManagerProxy::mappingsFor(
+        const QmlControllerDeviceProxy* pDevice) const {
+    if (pDevice->internal()->getDataRepresentationProtocol() == DataRepresentationProtocol::MIDI) {
+        const auto midiMappings = m_knownMappings.value(QmlControllerDeviceProxy::Type::MIDI);
+        return QSet<QmlControllerMappingProxy*>(midiMappings.cbegin(), midiMappings.cend());
+    }
+    const auto& productInfo = pDevice->productInfo();
+    if (!productInfo.has_value()) {
+        return {};
+    }
+    for (auto it = m_knownDevices.constKeyValueBegin(); it != m_knownDevices.constKeyValueEnd();
+            ++it) {
+        if ((*it).first.vendor_id == productInfo->vendor_id &&
+                (*it).first.product_id == productInfo->product_id &&
+                (*it).first.interface_number == productInfo->interface_number) {
+            return (*it).second;
+        }
+    }
+    return {};
+}
+
+void QmlControllerManagerProxy::autoSetupDevice(QmlControllerDeviceProxy* pDevice) {
+    // First run only, for MIDI controllers: when nothing was ever stored for
+    // this device and exactly one bundled mapping carries its name, select it
+    // and enable the controller once (through the Save path of the UI).
+    Controller* pController = pDevice->internal();
+    if (m_autoSetupDone.contains(pController) ||
+            pController->getDataRepresentationProtocol() != DataRepresentationProtocol::MIDI) {
+        return;
+    }
+    const auto mappings = m_knownMappings.value(QmlControllerDeviceProxy::Type::MIDI);
+    if (mappings.isEmpty()) {
+        return; // mappings not enumerated yet; retried on the next refresh
+    }
+    m_autoSetupDone.insert(pController);
+    if (m_pControllerManager->hasSavedConfigForDevice(pController->getName()) ||
+            pController->isOpen()) {
+        return;
+    }
+    const auto matches = QmlControllerDeviceProxy::matchingMappings(
+            QSet<QmlControllerMappingProxy*>(mappings.cbegin(), mappings.cend()),
+            pController->getName());
+    if (matches.size() != 1) {
+        return;
+    }
+    const UserSettingsPointer pConfig = m_pControllerManager->getConfig();
+    if (matches.first()->isUserMapping(pConfig)) {
+        return;
+    }
+    qInfo() << "First run: enabling" << pController->getName() << "with bundled mapping"
+            << matches.first()->getName();
+    pDevice->autoApply(pConfig, matches.first());
+}
+
+void QmlControllerManagerProxy::autoSetupDevices() {
+    const auto devices = m_knownDevicesFound + m_unknownDevicesFound;
+    for (auto* pDevice : devices) {
+        autoSetupDevice(pDevice);
+    }
+}
+
 void QmlControllerManagerProxy::refreshMappings() {
+    // The mapping proxies are recreated below: forget the stale per-product
+    // sets and point devices created earlier at the new proxies, otherwise the
+    // dropdown (which lists the new ones) cannot show their selection.
+    m_knownDevices.clear();
     m_knownMappings.insert(QmlControllerDeviceProxy::Type::HID, {});
     m_knownMappings.insert(QmlControllerDeviceProxy::Type::MIDI, {});
     m_knownMappings.insert(QmlControllerDeviceProxy::Type::BULK, {});
 
     loadMappingFromEnumerator(m_pControllerManager->getMainThreadSystemMappingEnumerator());
     loadMappingFromEnumerator(m_pControllerManager->getMainThreadUserMappingEnumerator());
+
+    const auto rebind = [this](const QList<QmlControllerDeviceProxy*>& devices) {
+        for (auto* pDevice : devices) {
+            pDevice->rebindMappings(mappingsFor(pDevice));
+        }
+    };
+    rebind(m_knownDevicesFound);
+    rebind(m_unknownDevicesFound);
+    autoSetupDevices();
 }
 void QmlControllerManagerProxy::refreshKnownDevices() {
     const auto controllers = m_pControllerManager->getControllers();
@@ -779,6 +954,7 @@ void QmlControllerManagerProxy::refreshKnownDevices() {
                 this,
                 &QmlControllerManagerProxy::updateExistingMapping);
     }
+    autoSetupDevices();
     emit deviceListChanged();
 }
 

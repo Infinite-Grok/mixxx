@@ -3,6 +3,7 @@
 #include <QDialog>
 #include <QObject>
 #include <QQmlEngine>
+#include <QSet>
 #include <QVideoSink>
 #include <memory>
 #include <optional>
@@ -11,6 +12,7 @@
 #include "controllers/controllermappinginfoenumerator.h"
 #include "controllers/legacycontrollermapping.h"
 #include "controllers/legacycontrollersettingslayout.h"
+#include "preferences/usersettings.h"
 #include "qmlconfigproxy.h"
 
 class ControllerManager;
@@ -208,6 +210,10 @@ class QmlControllerMappingProxy : public QObject {
         return m_mappingDefinition;
     }
     Q_INVOKABLE bool isUserMapping(const mixxx::qml::QmlConfigProxy* pConfig) const;
+    bool isUserMapping(const UserSettingsPointer& pConfig) const;
+    /// Case-insensitive match of a device name against this mapping's name or
+    /// file name, treating spaces and underscores alike.
+    bool matchesDeviceName(const QString& deviceName) const;
 
   signals:
     // This signal gets emitted when the mapping cannot be read anymore. This
@@ -289,6 +295,20 @@ class QmlControllerDeviceProxy : public QObject {
     Q_INVOKABLE bool save(const mixxx::qml::QmlConfigProxy* pConfig);
     Q_INVOKABLE void clear();
 
+    /// The mappings of `mappings` that match the device name (see
+    /// QmlControllerMappingProxy::matchesDeviceName).
+    static QList<QmlControllerMappingProxy*> matchingMappings(
+            const QSet<QmlControllerMappingProxy*>& mappings, const QString& deviceName);
+    /// Replace the offered mappings (after a mapping refresh) keeping the
+    /// current selection by file path and any pending edit.
+    void rebindMappings(const QSet<QmlControllerMappingProxy*>& mappings);
+    /// First run: select and enable the mapping through the same path as
+    /// the Save button of the preferences.
+    bool autoApply(const UserSettingsPointer& pConfig, QmlControllerMappingProxy* pMapping);
+    const std::optional<ProductInfo>& productInfo() const {
+        return m_productInfo;
+    }
+
     Controller* internal() const {
         return m_pInternal;
     }
@@ -314,10 +334,17 @@ class QmlControllerDeviceProxy : public QObject {
     void deviceLearned();
 
   private:
+    bool saveImpl(const UserSettingsPointer& pConfig);
+    void resolveMapping();
+
     bool m_edited;
     QString m_editedFriendlyName;
     QUrl m_editedVisualUrl;
     std::optional<bool> m_enabled;
+    // State committed by the last save while the (queued) open/close of the
+    // controller has not been reported yet; keeps the switch from falling
+    // back to the stale open state right after Save.
+    std::optional<bool> m_pendingEnabled;
     Controller* m_pInternal;
     std::optional<ProductInfo> m_productInfo;
     QSet<QmlControllerMappingProxy*> m_mappings;
@@ -377,6 +404,10 @@ class QmlControllerManagerProxy : public QObject {
     static inline bool s_controllerPreviewScreens;
 
     void loadMappingFromEnumerator(QSharedPointer<MappingInfoEnumerator> enumerator);
+    QSet<QmlControllerMappingProxy*> mappingsFor(const QmlControllerDeviceProxy* pDevice) const;
+    void autoSetupDevice(QmlControllerDeviceProxy* pDevice);
+    void autoSetupDevices();
+    QSet<Controller*> m_autoSetupDone;
 
     QList<Controller*> m_knownControllers;
     QHash<ProductInfo, QSet<QmlControllerMappingProxy*>> m_knownDevices;

@@ -306,6 +306,12 @@ QString ControllerManager::getConfiguredMappingFileForDevice(const QString& name
     return m_pConfig->getValueString(ConfigKey(kSettingsGroup, sanitizeDeviceName(name)));
 }
 
+bool ControllerManager::hasSavedConfigForDevice(const QString& name) const {
+    const QString deviceName = sanitizeDeviceName(name);
+    return !m_pConfig->getValueString(ConfigKey(kSettingsGroup, deviceName)).isEmpty() ||
+            m_pConfig->exists(ConfigKey("[Controller]", deviceName));
+}
+
 void ControllerManager::setUpDevice(Controller& controller) {
     QStringList mappingPaths(getMappingPaths(m_pConfig));
     QString name = controller.getName();

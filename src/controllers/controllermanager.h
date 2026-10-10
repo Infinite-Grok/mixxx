@@ -39,6 +39,12 @@ class ControllerManager : public QObject {
         return m_pMainThreadSystemMappingEnumerator;
     }
     QString getConfiguredMappingFileForDevice(const QString& name) const;
+    /// True if a mapping and/or an enabled state was ever stored for this
+    /// device name (either [ControllerPreset] or [Controller] key exists).
+    bool hasSavedConfigForDevice(const QString& name) const;
+    UserSettingsPointer getConfig() const {
+        return m_pConfig;
+    }
 
     /// Prevent other parts of Mixxx from having to manually connect to our slots
     void setUpDevices() { emit requestSetUpDevices(); };
