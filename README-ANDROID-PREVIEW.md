@@ -44,7 +44,8 @@ Inpulse T7 over USB (class-compliant MIDI via libremidi), earlier build C5. Resu
 The signed rc4 APK was installed on a Galaxy Z Fold7 with a fresh profile. With the T7 attached before launch,
 its mapping enabled at startup and an AAC-LC M4A test tone played audibly in headphones without manual controller
 or sound setup. J also reported that the Back button works on rc4; the exact navigation path was not logged.
-The first-run Main output is under investigation. Still untested on rc4: preservation of existing saved sound
+J reported that Main output responded after raising the Fold system volume. Still untested on rc4:
+preservation of existing saved sound
 and controller choices, T7 unplug/replug, AAC seeking and gapless playback, other phones and controllers,
 long sessions, phone calls, and other audio interruptions. A future APK built from this clean source history
 will need its own device smoke test. Nothing here is a statement about audio latency or quality.
