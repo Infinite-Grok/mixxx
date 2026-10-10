@@ -22,6 +22,10 @@ DEPS_ROOT="${DEPS_ROOT:-$PREVIEW_WORK/deps}"
 DEPS_DIR="$DEPS_ROOT/$BUILDENV_NAME"
 DEPS_PREFIX="$DEPS_DIR/installed/arm64-android"
 
+# Build-host paths must not end up in the shipped binaries (assert/__FILE__ strings, debug info). The more specific
+# prefixes come last: for overlapping maps the last matching one wins.
+PREVIEW_PREFIX_MAP="-ffile-prefix-map=$PREVIEW_WORK=/preview-work -ffile-prefix-map=$PREVIEW_SRC=/mixxx-preview -ffile-prefix-map=$DEPS_DIR=/deps"
+
 # Toolchain (the versions the preview was built and verified with).
 ANDROID_SDK="${ANDROID_SDK:-/usr/lib/android-sdk}"
 ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_SDK/ndk/27.2.12479018}"

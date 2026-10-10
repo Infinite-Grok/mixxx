@@ -2499,6 +2499,15 @@ if(QT6)
       COMMAND
         ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/res
         ${CMAKE_CURRENT_BINARY_DIR}/android-build/assets
+      # Mixxx Preview (unofficial): the licence texts and NOTICE travel inside the APK (assets/legal/).
+      COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_CURRENT_BINARY_DIR}/android-build/assets/legal
+      COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/COPYING
+        ${CMAKE_SOURCE_DIR}/LICENSE ${CMAKE_SOURCE_DIR}/NOTICE
+        ${CMAKE_SOURCE_DIR}/packaging/android-legal/GPL-3.0.txt
+        ${CMAKE_CURRENT_BINARY_DIR}/android-build/assets/legal
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
     add_dependencies(mixxx copy-resource-android)

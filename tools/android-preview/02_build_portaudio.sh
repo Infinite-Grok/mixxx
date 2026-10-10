@@ -30,10 +30,14 @@ echo "$PATCHED_PA_OBOE_SHA256  src/hostapi/oboe/pa_oboe.cpp" | sha256sum -c -
 export PKG_CONFIG_LIBDIR="$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig"
 # ALSA and JACK stay ON: Mixxx references PaAlsa_EnableRealtimeScheduling, and the pinned dependency's own
 # libportaudio.a has the same 16 members (pa_linux_alsa.c.o, pa_jack.c.o).
+# Build-host paths must not end up in the library (debug line tables, __FILE__). The NDK toolchain file appends its
+# own default flags to these, so they are not lost.
+PA_MAP="-ffile-prefix-map=$PA=/portaudio -ffile-prefix-map=$DEPS_DIR=/deps"
 cmake -S "$SRC" -B "$PA/build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-35 -DANDROID_STL=c++_shared \
-  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_FLAGS=-fexceptions \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=14 \
+  "-DCMAKE_CXX_FLAGS=-fexceptions $PA_MAP" "-DCMAKE_C_FLAGS=$PA_MAP" \
   -DPA_BUILD_SHARED_LIBS=OFF -DPA_USE_SNDIO=OFF -DPA_USE_ALSA=ON -DPA_USE_JACK=ON \
   -DCMAKE_PREFIX_PATH="$DEPS_PREFIX" -DALSA_LIBRARY="$DEPS_PREFIX/lib/libasound.a" -DALSA_INCLUDE_DIR="$DEPS_PREFIX/include" \
   -DPA_USE_OBOE=ON -DPA_BUILD_EXAMPLES=OFF -DPA_BUILD_TESTS=OFF \

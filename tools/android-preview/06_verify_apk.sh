@@ -107,4 +107,47 @@ LIST=$(unzip -l "$APK")
 for f in Hercules_DJControl_Inpulse_T7.midi.xml Hercules-DJControl-Inpulse-T7-script.js Hercules-DJControl-Inpulse-T7-platter.js midi-components-0.0.js; do
   has "assets/controllers/$f\$" "$LIST" && ok "asset controllers/$f" || bad "asset controllers/$f"
 done
+# --- Public-release hygiene (rc2 and later) ---------------------------------------------------------------------
+# No build-host paths or user names in any shipped file (assert/__FILE__ strings, FFmpeg configure line, debug info).
+# Checks the user running this script, the build/source/work directories, WSL/Windows mount paths and Windows drive paths.
+ALLX=$(mktemp -d); unzip -q -o "$APK" -d "$ALLX"
+PRIV="$HOME|/mnt/[a-z]/|[A-Za-z]:[/\\]+(Users|Documents|VectorSTEMS|t7-)|/Users/[A-Za-z0-9_.-]+/"
+[ -n "${USER:-}" ] && PRIV="$PRIV|/home/$USER|\b$USER\b"
+[ -n "${PREVIEW_WORK:-}" ] && PRIV="$PRIV|$PREVIEW_WORK"
+[ -n "${PREVIEW_SRC:-}" ] && PRIV="$PRIV|$PREVIEW_SRC"
+priv_hits=0
+while IFS= read -r -d '' f; do
+  if [ "${f##*.}" = so ]; then CNT=$(strings -n 6 "$f" | grep -Ec -- "$PRIV"); else CNT=$(grep -aEc -- "$PRIV" "$f"); fi
+  if [ "$CNT" -ne 0 ]; then priv_hits=$((priv_hits+1)); echo "  private path/name evidence in ${f#$ALLX/}: $CNT lines"; fi
+done < <(find "$ALLX" -type f -print0)
+[ "$priv_hits" -eq 0 ] && ok "no private paths or user names in any file of the APK" || bad "private paths or user names in $priv_hits files"
+LIST=$(unzip -l "$APK")
+has "qmltooling" "$LIST" && bad "QML debugger/profiler plugins (qmltooling) are in the APK" || ok "no qmltooling (QML debugger/profiler) plugins"
+for f in COPYING LICENSE GPL-3.0.txt NOTICE; do
+  has "assets/legal/$f\$" "$LIST" && ok "asset legal/$f" || bad "asset legal/$f"
+done
+if [ -f "$PREVIEW_SRC/NOTICE" ]; then
+  cmp -s "$ALLX/assets/legal/NOTICE" "$PREVIEW_SRC/NOTICE" && ok "assets/legal/NOTICE equals the repository NOTICE" || bad "assets/legal/NOTICE differs from the repository NOTICE"
+fi
+# NOTICE must not mention an open licence question or FDK other than saying it is excluded.
+[ -f "$ALLX/assets/legal/NOTICE" ] && ! grep -qi "open question" "$ALLX/assets/legal/NOTICE" && ok "NOTICE has no open-question wording" || bad "NOTICE missing or has open-question wording"
+# PREVIEW badge on the launcher icon: the adaptive icon uses the preview foreground, and the drawable is in the APK.
+RES=$("$BT/aapt2" dump resources "$APK")
+has "ic_launcher_preview_foreground" "$RES" && ok "launcher icon: PREVIEW badge drawable present" || bad "launcher icon: PREVIEW badge drawable missing"
+ICONXML=$("$BT/aapt2" dump xmltree --file res/mipmap-anydpi-v26/ic_launcher.xml "$APK" 2>&1 || true)
+has "foreground" "$ICONXML" && has "ic_launcher_preview_foreground\|0x7f" "$ICONXML" && ok "adaptive icon xml has a foreground" || bad "adaptive icon xml"
+# Permissions: exactly the documented set.
+PERMS=$("$BT/aapt2" dump permissions "$APK" | sed -n "s/^uses-permission: name='\(.*\)'.*/\1/p" | sort | tr '\n' ' ')
+echo "  permissions: $PERMS"
+WANTP="android.permission.ACCESS_NETWORK_STATE android.permission.INTERNET android.permission.MANAGE_EXTERNAL_STORAGE android.permission.MODIFY_AUDIO_SETTINGS android.permission.RECORD_AUDIO android.permission.USB_PERMISSION android.permission.WAKE_LOCK android.permission.WRITE_EXTERNAL_STORAGE $PREVIEW_APP_ID.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION "
+[ "$PERMS" = "$WANTP" ] && ok "permissions are exactly the documented set" || bad "permissions differ from the documented set"
+# Source state of the build (optional): BUILD_LOG=<log of 04_configure_build.sh> proves a clean committed tree.
+if [ -n "${BUILD_LOG:-}" ]; then
+  has "Git worktree modified: no" "$(cat "$BUILD_LOG")" && ok "build log: Git worktree modified: no" || bad "build log: worktree was modified or line missing"
+  DESC=$(sed -n 's/.*Git describe: //p' "$BUILD_LOG" | head -1); echo "  Git describe: $DESC"
+  has "-modified" "$DESC" && bad "git describe says -modified" || ok "git describe is not -modified"
+  HEADS=$(git -C "$PREVIEW_SRC" rev-parse --short=10 HEAD 2>/dev/null || true)
+  [ -n "$HEADS" ] && { has "g$HEADS" "$DESC" && ok "build is from HEAD $HEADS" || bad "build commit does not match HEAD $HEADS"; }
+fi
+rm -rf "$ALLX"
 exit $fail

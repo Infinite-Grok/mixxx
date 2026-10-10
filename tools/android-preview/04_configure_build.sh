@@ -10,6 +10,9 @@ export BUILDENV_BASEPATH="$DEPS_ROOT" BUILDENV_NAME BUILDENV_URL BUILDENV_SHA256
 export GRADLE_OPTS="-Dorg.gradle.workers.max=$GRADLE_WORKERS -Xmx2g -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.paths=$JAVA_HOME"
 echo "BUILD start $(date -u +%FT%TZ) src=$PREVIEW_SRC commit=$(git -C "$PREVIEW_SRC" rev-parse HEAD)"
 if [ ! -f "$B/CMakeCache.txt" ]; then
+  # Build-host paths must not end up in the binaries. CFLAGS/CXXFLAGS (read by CMake on the first configure) are used
+  # instead of -DCMAKE_*_FLAGS, which would replace the NDK toolchain's default flags (fortify, stack protector, ...).
+  export CFLAGS="$PREVIEW_PREFIX_MAP -ffile-prefix-map=$B=/build" CXXFLAGS="$PREVIEW_PREFIX_MAP -ffile-prefix-map=$B=/build"
   # CMAKE_CXX_SCAN_FOR_MODULES=OFF: CMake 3.28 otherwise needs clang-scan-deps for the C++20 try_compile.
   nice -n 10 cmake -G Ninja -S "$PREVIEW_SRC" -B "$B" \
     -DCMAKE_TOOLCHAIN_FILE="$MIXXX_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
@@ -20,6 +23,8 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
     -DBUILD_TESTING=OFF -DBUILD_BENCH=OFF
 fi
 echo "CONFIGURED $(date -u +%FT%TZ)"
+# The QML debugger/profiler plugins (libplugins_qmltooling_*, including a TCP debug server) are for developers only
+# and are not bundled in the release.
 # Qt Multimedia ships a prebuilt FFmpeg backend plugin (libplugins_multimedia_ffmpegmediaplugin) that statically
 # contains FFmpeg WITH Fraunhofer FDK-AAC. Do not bundle it: Qt Multimedia then uses its Android MediaPlayer plugin
 # (libplugins_multimedia_androidmediaplugin), which is already bundled. Mixxx itself decodes audio with its own
@@ -29,12 +34,12 @@ import json, sys
 p = sys.argv[1]
 d = json.load(open(p))
 key = "android-deploy-plugins"
-parts = [x for x in d[key].split(";") if x and "ffmpegmediaplugin" not in x]
+parts = [x for x in d[key].split(";") if x and "ffmpegmediaplugin" not in x and "qmltooling" not in x]
 d[key] = ";".join(parts)
 json.dump(d, open(p, "w"), indent=3)
-print("deployment plugins without ffmpegmediaplugin:", len(parts))
+print("deployment plugins without ffmpegmediaplugin and qmltooling:", len(parts))
 PYEOF
 # androiddeployqt copies into android-build/libs and does not delete stale files, so remove any earlier copy.
-rm -f "$B"/android-build/libs/arm64-v8a/libplugins_multimedia_ffmpegmediaplugin*
+rm -f "$B"/android-build/libs/arm64-v8a/libplugins_multimedia_ffmpegmediaplugin* "$B"/android-build/libs/arm64-v8a/libplugins_qmltooling_*
 nice -n 10 cmake --build "$B" --target apk -j "$NINJA_JOBS"
 echo "APK_TARGET_DONE $(date -u +%FT%TZ)"

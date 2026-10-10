@@ -13,7 +13,9 @@ set -euo pipefail
 . "$(dirname "$0")/env.sh"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VCPKG_COMMIT=1c20f84aa1ffca2ef18a7d9c6bd7cdd1f5f2e265
-FF="$PREVIEW_WORK/ffmpeg-native-aac"
+# FFmpeg records its configure line (--prefix=..., --extra-*flags=...) in the library, so the build tree must live at a
+# path that does not name the user or the machine layout. Default: a fixed directory below /tmp (override if needed).
+FF="${FFMPEG_BUILD_DIR:-/tmp/mixxx-preview-ffmpeg}"
 NEW="$FF/installed/arm64-android"
 REMOVED="$PREVIEW_WORK/removed-fdk-aac"
 RECORD="$PREVIEW_WORK/ffmpeg-no-fdk-integration.txt"

@@ -21,10 +21,12 @@ The preview does not patch the downloaded zip. Instead:
    copy and records before/after hashes.
 
 Result of the original candidate build: `libportaudio.a` sha256 `44182eb98f0253cf8444d3339149db4ae819e7420ea1b6c7b47b7a48940646c0`.
-The preview rerun of these scripts (different scratch path) gave a different hash, because the objects embed the build
-path in assertion strings; it has the same 16 archive members and the same patched source hash. The archive original is
-`cf42a47ad5c0a61422b86df3a6bad98148556fd0b480a49378b2e44e56614e7c`. Compare the checks in `portaudio/README.md`
-(patched `pa_oboe.cpp` hash, archive members, no `strcpy` import in `pa_oboe.cpp.o`) rather than the library hash.
+Earlier runs of these scripts gave different hashes, because the objects embedded the build path in assertion
+strings. Since preview rc2 the script passes `-ffile-prefix-map` (build tree and dependency tree), so no build-host
+path is in the library any more; the rc2 build gave `4fb1a75dd975c97dfdfe0761567d69fa4bc8f6c92f01061282b8bb64936080a6`
+(same 16 archive members and the same patched source hash as before; a different toolchain may still change the hash).
+The archive original is `cf42a47ad5c0a61422b86df3a6bad98148556fd0b480a49378b2e44e56614e7c`. Compare the checks in
+`portaudio/README.md` (patched `pa_oboe.cpp` hash, archive members, no `strcpy` import in `pa_oboe.cpp.o`).
 
 ## Why there is also an FFmpeg step (FDK-AAC removal)
 
@@ -46,6 +48,9 @@ library, whose licence is widely considered incompatible with the GPL. Worse for
    `share/ffmpeg/*.cmake`, keeps the originals in `$PREVIEW_WORK/ffmpeg-archive-original/`, and moves the `fdk-aac` library,
    headers, pkg-config and cmake files to `$PREVIEW_WORK/removed-fdk-aac/` so that Mixxx's `find_package(FdkAac)` finds nothing.
    Before/after sha256 values go to `$PREVIEW_WORK/ffmpeg-no-fdk-integration.txt`.
+
+FFmpeg stores its configure line (with `--prefix=...`) in the library, so `03b_ffmpeg_no_fdk.sh` builds in a neutral
+directory, `/tmp/mixxx-preview-ffmpeg` by default (`FFMPEG_BUILD_DIR` overrides it), not below your home directory.
 
 Qt Multimedia's prebuilt `libplugins_multimedia_ffmpegmediaplugin` also embeds FFmpeg with FDK. `04_configure_build.sh`
 removes it from the deployment list (and deletes any stale copy in `android-build/libs`), so Qt Multimedia uses its Android
@@ -106,6 +111,19 @@ bash 06_verify_apk.sh "$PREVIEW_WORK/out/mixxx-preview-0.1.0-preview.1.apk"
 
 `06_verify_apk.sh` checks the signature, certificate, applicationId, label, debuggable flag, SDK levels, ABI, zip and ELF
 16 KB alignment of every `.so`, the JNI exports and dex classes that libremidi needs, and that the T7 mapping is in the assets.
+For a public release it also checks that no file of the APK contains a private path or user name (your home directory,
+the source and work directories, `/mnt/<drive>/`, Windows user paths), that the QML debugger plugins (`qmltooling`) are
+absent, that `assets/legal/` has `COPYING`, `LICENSE`, `GPL-3.0.txt` and a `NOTICE` identical to the repository one, that
+the launcher icon has the PREVIEW badge, and that the permissions are exactly the documented set. Give it the build log
+(`BUILD_LOG=<log of 04_configure_build.sh>`) to also prove the build came from the clean, committed HEAD.
+
+## Build hygiene
+
+- `04_configure_build.sh` passes `-ffile-prefix-map` for the source, work, dependency and build directories (through
+  `CFLAGS`/`CXXFLAGS`), so `__FILE__`/assert strings and debug info name `/mixxx-preview/...`, `/deps/...`, `/build/...`.
+- It leaves the QML debugger and profiler plugins out of the deployment.
+- The APK carries `COPYING`, `LICENSE`, `GPL-3.0.txt` and `NOTICE` in `assets/legal/` (`copy-resource-android` in `CMakeLists.txt`).
+- Build from a clean committed tree: the build log records `Git describe` and `Git worktree modified`.
 
 ## Changing the version
 

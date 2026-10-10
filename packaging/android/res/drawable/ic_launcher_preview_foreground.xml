@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mixxx Preview (unofficial): red PREVIEW banner over the launcher icon, so this build cannot be
+     mistaken for an official Mixxx. Kept inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <path
+      android:pathData="M27,44 L81,44 A3,3 0 0 1 84,47 L84,61 A3,3 0 0 1 81,64 L27,64 A3,3 0 0 1 24,61 L24,47 A3,3 0 0 1 27,44 Z"
+      android:fillColor="#C62828"
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="1.2"/>
+  <path
+      android:pathData="M29.00,59.00 L29.00,49.00 L33.00,49.00 L34.00,50.00 L34.00,53.00 L33.00,54.00 L29.00,54.00 M36.80,59.00 L36.80,49.00 L40.80,49.00 L41.80,50.00 L41.80,53.00 L40.80,54.00 L36.80,54.00 M39.80,54.00 L41.80,59.00 M49.60,49.00 L44.60,49.00 L44.60,59.00 L49.60,59.00 M44.60,54.00 L48.60,54.00 M52.40,49.00 L54.90,59.00 L57.40,49.00 M62.70,49.00 L62.70,59.00 M73.00,49.00 L68.00,49.00 L68.00,59.00 L73.00,59.00 M68.00,54.00 L72.00,54.00 M75.80,49.00 L77.10,59.00 L78.30,53.00 L79.50,59.00 L80.80,49.00"
+      android:fillColor="#00000000"
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="1.7"
+      android:strokeLineCap="butt"
+      android:strokeLineJoin="miter"/>
+</vector>
