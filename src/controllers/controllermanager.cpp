@@ -1,5 +1,6 @@
 #include "controllers/controllermanager.h"
 
+#include <QFileInfo>
 #include <QSet>
 #include <QThread>
 
@@ -74,6 +75,13 @@ QFileInfo findMappingFile(const QString& pathOrFilename, const QStringList& path
 // Legacy code referred to mappings as "presets", so "[ControllerPreset]" must be
 // kept for backwards compatibility.
 const QString kSettingsGroup = QLatin1String("[ControllerPreset]");
+
+/// Compare device and mapping names loosely: case-insensitive, spaces and
+/// underscores alike.
+QString normalizeMatchName(QString name) {
+    name.replace(QLatin1Char('_'), QLatin1Char(' '));
+    return name.simplified().toLower();
+}
 
 } // anonymous namespace
 
@@ -312,6 +320,43 @@ bool ControllerManager::hasSavedConfigForDevice(const QString& name) const {
             m_pConfig->exists(ConfigKey("[Controller]", deviceName));
 }
 
+void ControllerManager::autoSelectBundledMapping(Controller& controller) {
+    // First run only, MIDI controllers only: when nothing was ever stored for
+    // this device and exactly one bundled mapping is named like it, store that
+    // mapping and the enabled state, so the regular setup opens it. Needs no
+    // preferences dialog. Mapping files are never rewritten.
+    if (controller.getDataRepresentationProtocol() != DataRepresentationProtocol::MIDI ||
+            hasSavedConfigForDevice(controller.getName())) {
+        return;
+    }
+    if (!m_bundledMidiMappings) {
+        MappingInfoEnumerator enumerator(resourceMappingsPath(m_pConfig));
+        m_bundledMidiMappings = enumerator.getMappingsByExtension(MIDI_MAPPING_EXTENSION);
+    }
+    const QString wanted = normalizeMatchName(controller.getName());
+    if (wanted.isEmpty()) {
+        return;
+    }
+    QString matchPath;
+    int matchCount = 0;
+    for (const MappingInfo& info : std::as_const(*m_bundledMidiMappings)) {
+        const QString baseName = QFileInfo(info.getPath()).completeBaseName();
+        if (normalizeMatchName(info.getName()) == wanted ||
+                normalizeMatchName(baseName) == wanted) {
+            matchPath = info.getPath();
+            ++matchCount;
+        }
+    }
+    if (matchCount != 1) {
+        return;
+    }
+    qInfo() << "First run: enabling" << controller.getName() << "with bundled mapping"
+            << matchPath;
+    const QString deviceName = sanitizeDeviceName(controller.getName());
+    m_pConfig->set(ConfigKey(kSettingsGroup, deviceName), matchPath);
+    m_pConfig->setValue(ConfigKey("[Controller]", deviceName), 1);
+}
+
 void ControllerManager::setUpDevice(Controller& controller) {
     QStringList mappingPaths(getMappingPaths(m_pConfig));
     QString name = controller.getName();
@@ -319,6 +364,8 @@ void ControllerManager::setUpDevice(Controller& controller) {
     if (controller.isOpen()) {
         controller.close();
     }
+
+    autoSelectBundledMapping(controller);
 
     // The filename for this device name.
     QString deviceName = sanitizeDeviceName(name);

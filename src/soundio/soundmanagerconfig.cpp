@@ -22,6 +22,7 @@ const QString SoundManagerConfig::kAPIDirectSound = QStringLiteral("Windows Dire
 const QString SoundManagerConfig::kAPIIosAudio = QStringLiteral("iOS Audio");
 const QString SoundManagerConfig::kAPICoreAudio = QStringLiteral("Core Audio");
 const QString SoundManagerConfig::kAPIPipewire = QStringLiteral("PipeWire");
+const QString SoundManagerConfig::kAPIOboe = QStringLiteral("Android Oboe");
 
 const QString SoundManagerConfig::kEmptyComboBox = QStringLiteral("---");
 const unsigned int SoundManagerConfig::kDefaultDeckCount = 2;
@@ -115,6 +116,7 @@ bool SoundManagerConfig::validateDevices() {
 
     QDomElement rootElement = m_doc.documentElement();
     QDomNodeList devElements(rootElement.elementsByTagName(xmlElementSoundDevice));
+    m_hadStoredDevices = devElements.count() > 0;
 
     const QList<SoundDevicePointer> soundDevices =
             m_pSoundManager->getDeviceList(m_api, true, true);
@@ -253,6 +255,11 @@ bool SoundManagerConfig::validateDevices() {
 }
 
 bool SoundManagerConfig::writeToDisk() const {
+    if (m_keepFileOnDisk) {
+        // The stored file names a device that is currently missing: keep it, so
+        // the device is routed again as soon as it is present at a later start.
+        return true;
+    }
     QDomDocument doc(xmlRootElement);
     QDomElement docElement(doc.createElement(xmlRootElement));
     docElement.setAttribute(xmlAttributeApi, m_api);
@@ -524,7 +531,13 @@ void SoundManagerConfig::loadDefaults(SoundManager* soundManager, unsigned int f
     if (flags & SoundManagerConfig::API) {
         QList<QString> apiList = soundManager->getHostAPIList();
         if (!apiList.isEmpty()) {
-#ifdef __LINUX__
+#ifdef Q_OS_ANDROID
+            // Oboe is the only usable API; "ALSA" below would not even be
+            // offered by PortAudio on Android.
+            if (apiList.contains(SoundManagerConfig::kAPIOboe)) {
+                m_api = SoundManagerConfig::kAPIOboe;
+            }
+#elif defined(__LINUX__)
             // Check if PipeWire checkbox selected
             if (m_pSoundManager->isPipewireSelected()) {
                 m_api = SoundManagerConfig::kAPIPipewire;
@@ -562,6 +575,35 @@ void SoundManagerConfig::loadDefaults(SoundManager* soundManager, unsigned int f
         clearInputs();
         const QList<SoundDevicePointer> outputDevices =
                 soundManager->getDeviceList(m_api, true, false);
+#ifdef Q_OS_ANDROID
+        // First run: a multichannel (DJ controller / USB interface) output
+        // gets Main on channels 1-2 and Headphones on channels 3-4.
+        bool multichannelRouted = false;
+        if (m_api == SoundManagerConfig::kAPIOboe &&
+                soundManager->androidUsbMultichannelDefault()) {
+            for (const auto& pDevice : outputDevices) {
+                if (pDevice->getNumOutputChannels() < 4) {
+                    continue;
+                }
+                addOutput(pDevice->getDeviceId(),
+                        AudioOutput(AudioPathType::Main,
+                                0,
+                                mixxx::audio::ChannelCount::stereo(),
+                                0));
+                addOutput(pDevice->getDeviceId(),
+                        AudioOutput(AudioPathType::Headphones,
+                                2,
+                                mixxx::audio::ChannelCount::stereo(),
+                                0));
+                defaultSampleRate = pDevice->getDefaultSampleRate();
+                multichannelRouted = true;
+                break;
+            }
+        }
+        if (multichannelRouted) {
+            // Main + Headphones are set up, skip the single output default.
+        } else
+#endif
         if (!outputDevices.isEmpty()) {
             for (const auto& pDevice : outputDevices) {
                 if (pDevice->getNumOutputChannels() < 2) {

@@ -529,6 +529,8 @@ void SoundManager::closeActiveConfig(bool async) {
 SoundDeviceStatus SoundManager::setConfig(const SoundManagerConfig& config) {
     SoundDeviceStatus status = SoundDeviceStatus::Ok;
     m_config = config;
+    // An explicit configuration (preferences) replaces the stored file.
+    m_config.setKeepFileOnDisk(false);
     checkConfig();
 
     closeActiveConfig();
@@ -724,6 +726,19 @@ void SoundManager::devicesEnumerated() {
         qDebug() << "!m_config.validateDevices()";
         m_config.loadDefaults(this, SoundManagerConfig::DEVICES);
     }
+#ifdef Q_OS_ANDROID
+    else if (!isPipewireSelected() && m_config.hadStoredDevices() &&
+            m_config.getOutputs().isEmpty()) {
+        // The configured device (e.g. a USB DJ controller) is not present now.
+        // Route the default output for this session but keep the stored file,
+        // so the configured device is used again once it is back (PortAudio's
+        // Oboe backend lists devices once per process, so on a later start).
+        qInfo() << "Configured sound device missing, using the default output "
+                   "for this session and keeping the stored sound config";
+        m_config.loadDefaults(this, SoundManagerConfig::DEVICES);
+        m_config.setKeepFileOnDisk(true);
+    }
+#endif
 }
 
 void SoundManager::invalidateConfig() {

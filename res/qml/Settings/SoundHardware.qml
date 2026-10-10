@@ -205,8 +205,16 @@ Category {
         id: scrollView
 
         anchors.fill: parent
+        clip: true
+        // Size the content to the visible width (or its own width when wider,
+        // then it scrolls) so nothing is cut off on wide inner displays.
+        contentWidth: contentLayout.width
 
         ColumnLayout {
+            id: contentLayout
+
+            width: Math.max(scrollView.availableWidth, implicitWidth)
+
             Item {
                 id: tabSection
 

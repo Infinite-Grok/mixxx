@@ -115,6 +115,16 @@ class SoundManager : public QObject {
     }
 
     void updateDeviceChannels(SoundDevicePointer pDevice);
+    /// Android: route Main (ch 1-2) and Headphones (ch 3-4) on the first
+    /// output with at least four channels when no config exists yet.
+    /// Preference [Android],usb_multichannel_default, default on.
+    bool androidUsbMultichannelDefault() const {
+        return m_pConfig->getValue(
+                ConfigKey(QStringLiteral("[Android]"),
+                        QStringLiteral("usb_multichannel_default")),
+                true);
+    }
+
     bool isPipewireSelected() {
 #ifdef __PIPEWIRE__
         return CmdlineArgs::Instance().getDeveloper() && m_pipewireEnabled;

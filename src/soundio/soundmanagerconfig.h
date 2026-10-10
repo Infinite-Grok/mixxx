@@ -62,6 +62,7 @@ class SoundManagerConfig {
     static const QString kAPIIosAudio;
     static const QString kAPICoreAudio;
     static const QString kAPIPipewire;
+    static const QString kAPIOboe;
 
     /// The default sample rate that Mixxx uses.
     static constexpr mixxx::audio::SampleRate kMixxxDefaultSampleRate =
@@ -78,6 +79,15 @@ class SoundManagerConfig {
     // other parts of the config to already be loaded.
     bool validateDevices();
     bool writeToDisk() const;
+    /// True if the config file read from disk routed at least one device
+    /// (valid after validateDevices()).
+    bool hadStoredDevices() const {
+        return m_hadStoredDevices;
+    }
+    /// While set, writeToDisk() leaves the file on disk untouched.
+    void setKeepFileOnDisk(bool keep) {
+        m_keepFileOnDisk = keep;
+    }
     QString getAPI() const;
     void setAPI(const QString& api);
     bool checkAPI();
@@ -112,6 +122,8 @@ class SoundManagerConfig {
     void loadDefaults(SoundManager* soundManager, unsigned int flags);
 
   private:
+    bool m_hadStoredDevices = false;
+    bool m_keepFileOnDisk = false;
     QFileInfo m_configFile;
     QString m_api;
     // none of our sample rates are actually decimals, this avoids

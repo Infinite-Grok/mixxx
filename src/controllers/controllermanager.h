@@ -4,9 +4,11 @@
 #include <QSharedPointer>
 #include <QTimer>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "controllers/controllerenumerator.h"
+#include "controllers/controllermappinginfo.h"
 #include "preferences/usersettings.h"
 #include "util/duration.h"
 
@@ -54,6 +56,7 @@ class ControllerManager : public QObject {
     void addDevice(Controller* pController);
     void removeDevice(Controller* pController);
     void setUpDevice(Controller& pController);
+    void autoSelectBundledMapping(Controller& controller);
 
   signals:
     void initialized();
@@ -112,4 +115,7 @@ class ControllerManager : public QObject {
     QSharedPointer<MappingInfoEnumerator> m_pMainThreadSystemMappingEnumerator;
     /// Accessed only from the ControllerManager thread via slotPollDevices().
     bool m_skipPoll;
+    /// Bundled MIDI mappings, lazily listed on the ControllerManager thread
+    /// for the first-run auto-selection.
+    std::optional<QList<MappingInfo>> m_bundledMidiMappings;
 };
