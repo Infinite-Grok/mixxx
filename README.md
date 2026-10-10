@@ -1,3 +1,11 @@
+# Mixxx Preview (unofficial) for Android
+
+**Preview fork. This is not an official Mixxx release and is not endorsed or supported by the Mixxx team.**
+For this Android build, start with [README-ANDROID-PREVIEW.md](README-ANDROID-PREVIEW.md).
+Please report preview problems to this fork rather than the Mixxx project.
+
+---
+
 # Mixxx
 
 [![GitHub latest tag](https://img.shields.io/github/tag/mixxxdj/mixxx.svg)](https://mixxx.org/download)

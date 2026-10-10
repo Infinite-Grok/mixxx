@@ -24,8 +24,8 @@ Layers, oldest first (the git history keeps them separate):
    nanosecond timestamps, QML controller preferences (MIDI devices get the MIDI mappings, the mapping dropdown
    no longer rewrites the mapping file), clean shutdown, Back button behaviour (Back closes the open page and
    asks before quitting).
-6. libremidi (vendored in `lib/libremidi`) with our Android backend patches 0001-0007. They are published as
-   separate branches in the libremidi fork so they can be reviewed upstream one by one.
+6. libremidi (vendored in `lib/libremidi`) with our Android backend patches 0001-0007. They are prepared as
+   separate local branches for upstream review; publication is pending.
 7. Preview packaging: package identity, version, the public Hercules DJControl Inpulse T7 beta mapping
    (`res/controllers`, built in), release signing and build scripts (`tools/android-preview/`).
 
@@ -46,6 +46,15 @@ on Back inside Preferences (Back now closes Preferences; Preferences also got a 
 only. Not yet shown on a device: the signed release build itself, AAC/M4A playback with the new decoder, other
 phones, other controllers, other Android versions, long sessions, phone calls and other audio interruptions.
 Nothing here is a statement about audio latency or quality.
+
+## First-run setup in the current source
+
+When there is no saved sound configuration, Android chooses the Oboe output. If a USB device
+offers at least four output channels, it assigns Main to channels 1–2 and Headphones to 3–4;
+otherwise it uses the first stereo output for Main. A controller with no stored controller
+choice can select and enable its one matching bundled MIDI mapping at startup. Existing sound
+and controller choices are intended to remain intact. These changes were built in rc4, but
+an independent upgrade-preservation review and the T7 replug check are still pending.
 
 ## Known issues
 
