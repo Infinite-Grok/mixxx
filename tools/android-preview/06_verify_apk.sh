@@ -134,8 +134,15 @@ fi
 # PREVIEW badge on the launcher icon: the adaptive icon uses the preview foreground, and the drawable is in the APK.
 RES=$("$BT/aapt2" dump resources "$APK")
 has "ic_launcher_preview_foreground" "$RES" && ok "launcher icon: PREVIEW badge drawable present" || bad "launcher icon: PREVIEW badge drawable missing"
-ICONXML=$("$BT/aapt2" dump xmltree --file res/mipmap-anydpi-v26/ic_launcher.xml "$APK" 2>&1 || true)
-has "foreground" "$ICONXML" && has "ic_launcher_preview_foreground\|0x7f" "$ICONXML" && ok "adaptive icon xml has a foreground" || bad "adaptive icon xml"
+# Resource paths are shortened in the APK, so look the icon file up in the resource table first.
+PREVID=$(sed -n 's/^ *resource \(0x[0-9a-f]*\) drawable\/ic_launcher_preview_foreground$/\1/p' <<<"$RES" | head -1)
+ICONFILE=$(awk '/resource 0x[0-9a-f]+ mipmap\/ic_launcher$/{f=1;next} f&&/\(file\)/{print $3; exit}' <<<"$RES")
+ICONXML=$("$BT/aapt2" dump xmltree --file "$ICONFILE" "$APK" 2>&1 || true)
+if [ -n "$PREVID" ] && has "foreground" "$ICONXML" && has "$PREVID" "$ICONXML"; then
+  ok "adaptive icon ($ICONFILE) uses the PREVIEW foreground $PREVID"
+else
+  bad "adaptive icon does not use the PREVIEW foreground (file=$ICONFILE id=$PREVID)"
+fi
 # Permissions: exactly the documented set.
 PERMS=$("$BT/aapt2" dump permissions "$APK" | sed -n "s/^uses-permission: name='\(.*\)'.*/\1/p" | sort | tr '\n' ' ')
 echo "  permissions: $PERMS"
