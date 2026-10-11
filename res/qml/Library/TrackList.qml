@@ -284,6 +284,7 @@ Rectangle {
                 }
                 const newRow = Mixxx.MathUtils.positiveModulo(row, rowCount);
                 this.select(this.model.index(newRow, 0), ItemSelectionModel.Rows | ItemSelectionModel.Select | ItemSelectionModel.Clear | ItemSelectionModel.Current);
+                view.positionViewAtRow(newRow, TableView.Contain);
             }
             function selectedTrackUrls() {
                 return this.selectedIndexes.map(index => {

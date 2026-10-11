@@ -47,7 +47,7 @@ Category {
     }
     function save() {
         const manager = Mixxx.SoundManager;
-        mainEnabled.value = mainMixEnabled.options.indexOf(mainMixEnabled.selected);
+        mainEnabled.value = mainMixEnabled.selected === mainMixEnabled.options[0] ? 1 : 0;
         monoMix.value = !mainOutputMode.options.indexOf(mainOutputMode.selected);
         manager.setForceNetworkClock(soundClock.options[1] == soundClock.selected);
         manager.setSampleRate(parseInt(sampleRate.selected));
