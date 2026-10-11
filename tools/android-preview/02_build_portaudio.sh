@@ -9,6 +9,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BASE=b0cc303e95fdb7c6c953337051378071c9043e88
 SHA512=fa7b40604ed97c1c5157c4faeb2188e7bbbddd06752811ff8d3facd30151e2f9104737210b7df21cf0f5c0661b28eb6db9b51da09cf015924b4e56835c111c46
 PATCHED_PA_OBOE_SHA256=4295e67089691aed812b09c6530894200e025d97ceeefbde788d6ad83feeb28e
+PATCHED_PA_OBOE_EXP1_SHA256=7b3fbdb6e8fe8914387b08a0375997019d4a661fce4144bb6a9d309543237456
 PA="$PREVIEW_WORK/portaudio"
 TARBALL="${PORTAUDIO_TARBALL:-$PREVIEW_WORK/portaudio-$BASE.tar.gz}"
 [ -e "$PA" ] && { echo "$PA exists; remove it to rebuild" >&2; exit 1; }
@@ -26,6 +27,8 @@ for p in 0001-Add-basic-support-for-iOS-to-portaudio 0002-Update-CMakeLists-with
   git apply "$HERE/portaudio/patches/$p.patch"
 done
 echo "$PATCHED_PA_OBOE_SHA256  src/hostapi/oboe/pa_oboe.cpp" | sha256sum -c -
+git apply "$HERE/portaudio/patches/0006-Log-Oboe-output-stream-open.patch"
+echo "$PATCHED_PA_OBOE_EXP1_SHA256  src/hostapi/oboe/pa_oboe.cpp" | sha256sum -c -
 # Host pkg-config must not leak in (a host libsndio was auto-detected once): use the dependency tree only.
 export PKG_CONFIG_LIBDIR="$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig"
 # ALSA and JACK stay ON: Mixxx references PaAlsa_EnableRealtimeScheduling, and the pinned dependency's own

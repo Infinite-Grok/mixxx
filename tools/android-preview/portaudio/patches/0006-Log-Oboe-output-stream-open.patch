@@ -1,0 +1,38 @@
+diff --git a/src/hostapi/oboe/pa_oboe.cpp b/src/hostapi/oboe/pa_oboe.cpp
+--- a/src/hostapi/oboe/pa_oboe.cpp
++++ b/src/hostapi/oboe/pa_oboe.cpp
+@@ -435,11 +435,30 @@ PaError OboeEngine::openStream(PaOboeStream *paOboeStream, Direction direction,
+         result = mediator->mOutputBuilder.openStream(mediator->mOutputStream);
+-        if (result != Result::OK) {
+-            LOGE("[OboeEngine::OpenStream]\t Oboe couldn't open the output stream: %s",
+-                 convertToText(result));
++        if (result != Result::OK || !mediator->mOutputStream) {
++            LOGE("[OboeEngine::OpenStream] output open failed: error=%s pa_device=%d requested_device=%d requested_rate=%d requested_callback_frames=%lu requested_performance=%d requested_sharing=%d",
++                 convertToText(result), paDeviceId, deviceId, sampleRate,
++                 paOboeStream->framesPerHostCallback, static_cast<int>(performanceMode),
++                 static_cast<int>(sharingMode));
+             return paUnanticipatedHostError;
+         }
+ 
+         mediator->mOutputStream->setDelayBeforeCloseMillis(kDelayBeforeCloseMillis);
+         mediator->mOutputStream->setPerformanceHintEnabled(performanceMode == PerformanceMode::LowLatency);
+-        mediator->mOutputStream->setBufferSizeInFrames(mediator->mOutputStream->getFramesPerBurst() * getNumberOfBuffers());
++        const int32_t requestedBufferFrames =
++                mediator->mOutputStream->getFramesPerBurst() * getNumberOfBuffers();
++        const auto bufferSizeResult =
++                mediator->mOutputStream->setBufferSizeInFrames(requestedBufferFrames);
++        LOGI("[OboeEngine::OpenStream] output pa_device=%d requested_device=%d granted_device=%d requested_rate=%d granted_rate=%d requested_performance=%d granted_performance=%d requested_sharing=%d granted_sharing=%d burst_frames=%d requested_buffer_frames=%d resize_result=%d resize_returned_frames=%d actual_buffer_frames=%d capacity_frames=%d requested_callback_frames=%lu granted_callback_frames=%d",
++             paDeviceId, deviceId, mediator->mOutputStream->getDeviceId(),
++             sampleRate, mediator->mOutputStream->getSampleRate(),
++             static_cast<int>(performanceMode),
++             static_cast<int>(mediator->mOutputStream->getPerformanceMode()),
++             static_cast<int>(sharingMode),
++             static_cast<int>(mediator->mOutputStream->getSharingMode()),
++             mediator->mOutputStream->getFramesPerBurst(), requestedBufferFrames,
++             static_cast<int>(bufferSizeResult.error()),
++             bufferSizeResult ? bufferSizeResult.value() : -1,
++             mediator->mOutputStream->getBufferSizeInFrames(),
++             mediator->mOutputStream->getBufferCapacityInFrames(),
++             paOboeStream->framesPerHostCallback,
++             mediator->mOutputStream->getFramesPerCallback());
+         paOboeStream->numOutputBuffers = getNumberOfBuffers();

@@ -3,3 +3,4 @@ cfbc4cccd1bdb046df30fc9dae035f83dfa4fd683c128ca2de38615780df3211  0001-Add-basic
 be17979ba85b56fec28ae9da63ce4f7f771b2de7fbdf2cd1ea8ffcc6b181e597  0003-Fix-renamed-memory-allocation-functions.patch
 76cffd4c0f59ac39191ec553bb38a34d648372abbf2512aef0c722c54487d90b  0004-Add-Android-OBOE.patch
 4a3adb320b0d991f38c0d848a9567039844ccc66a8c1adc68a0878eb8aba6003  0005-Fix-Oboe-registration-safety.patch
+345c6176a4545aa487dea79aff6299427ceba5a228ae1a0c6fa4f3d8a5926262  0006-Log-Oboe-output-stream-open.patch

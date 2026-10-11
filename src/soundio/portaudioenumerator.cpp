@@ -178,7 +178,8 @@ void PortAudioEnumerator::initialize() {
         qDebug() << "audioManager outputFramePerBuffer:" << outputFramePerBuffer;
         PaOboe_SetNativeBufferSize(outputFramePerBuffer);
     }).waitForFinished();
-    PaOboe_SetNumberOfBuffers(4);
+    // A4 latency experiment: request two device bursts instead of four.
+    PaOboe_SetNumberOfBuffers(2);
 
     // The following snippets pins the audio thread to a performance core
     int32_t thread32 = gettid();
