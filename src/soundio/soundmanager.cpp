@@ -311,6 +311,17 @@ SoundDeviceStatus SoundManager::setupDevices() {
     // pushBuffer and onDeviceOutputCallback until closeDevices() below.
 
     qDebug() << "SoundManager::setupDevices()";
+#ifdef Q_OS_ANDROID
+    // USB Direct has no usable routing UI in the preview: when it is the
+    // active API and nothing is routed, apply the role-based defaults
+    // (Main/Headphones from the profile channel roles). The config is
+    // written to disk by the caller, so the settings reflect it.
+    if (m_config.getAPI() == SoundManagerConfig::kAPIUsbDirect &&
+            m_config.getOutputs().isEmpty()) {
+        qInfo() << "USB Direct selected without outputs, applying role-based routing";
+        m_config.loadDefaults(this, SoundManagerConfig::DEVICES);
+    }
+#endif
     m_pControlObjectSoundStatusCO->set(SOUNDMANAGER_CONNECTING);
     SoundDeviceStatus status = SoundDeviceStatus::Ok;
     // NOTE(rryan): Do not clear m_pClkRefDevice here. If we didn't touch the
