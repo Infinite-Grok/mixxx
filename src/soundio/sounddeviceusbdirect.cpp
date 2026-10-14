@@ -5,6 +5,7 @@
 #include <jni.h>
 
 #include <QCoreApplication>
+#include <QTimer>
 #include <QJniArray>
 #include <QThread>
 #include <QtDebug>
@@ -28,7 +29,10 @@ namespace {
 
 const QString kAppGroup = QStringLiteral("[App]");
 constexpr int kCpuUsageUpdateRate = 30; // 1/s, same as the PortAudio device
-constexpr int kPermissionWaitMs = 30000;
+// open() never blocks long for the permission dialog: it asks when the device is enumerated.
+constexpr int kPermissionWaitMs = 3000;
+constexpr int kPermissionReRequestMs = 10000;
+constexpr int kHaltPollMs = 200;
 // Extra frames the FIFO keeps beyond one engine block (covers render time and wake-up latency).
 constexpr size_t kFifoMarginFrames = 256;
 
@@ -56,6 +60,28 @@ QJniObject findUsbDevice(const QJniObject& manager, uint16_t vid, uint16_t pid) 
         }
     }
     return QJniObject();
+}
+
+bool hasUsbPermission(const QJniObject& manager, const QJniObject& device) {
+    return manager.callMethod<jboolean>(
+            "hasPermission", "(Landroid/hardware/usb/UsbDevice;)Z", device.object());
+}
+
+// Non-blocking. Rate-limited so that repeated enumeration or Apply cannot stack dialogs.
+void requestUsbPermission(const QJniObject& manager, const QJniObject& device) {
+    static std::chrono::steady_clock::time_point lastRequest;
+    static bool requested = false;
+    const auto now = std::chrono::steady_clock::now();
+    if (requested &&
+            now - lastRequest < std::chrono::milliseconds(kPermissionReRequestMs)) {
+        return;
+    }
+    requested = true;
+    lastRequest = now;
+    manager.callMethod<void>("requestPermission",
+            "(Landroid/hardware/usb/UsbDevice;Landroid/app/PendingIntent;)V",
+            device.object(),
+            mixxx::android::getIntent().object());
 }
 
 void showNotice(const QString& message) {
@@ -144,7 +170,13 @@ std::vector<const usbdirect::DeviceProfile*> SoundDeviceUsbDirect::attachedProfi
     size_t count = 0;
     const usbdirect::DeviceProfile* table = usbdirect::profiles(&count);
     for (size_t i = 0; i < count; i++) {
-        if (findUsbDevice(manager, table[i].vendorId, table[i].productId).isValid()) {
+        const QJniObject device =
+                findUsbDevice(manager, table[i].vendorId, table[i].productId);
+        if (device.isValid()) {
+            // Ask as soon as the device shows up so the dialog is answered before Apply.
+            if (!hasUsbPermission(manager, device)) {
+                requestUsbPermission(manager, device);
+            }
             found.push_back(&table[i]);
         }
     }
@@ -162,25 +194,17 @@ bool SoundDeviceUsbDirect::acquireConnection(std::vector<unsigned char>* pRaw, i
         m_lastError = QStringLiteral("USB device is not attached");
         return false;
     }
-    auto hasPermission = [&]() {
-        return manager.callMethod<jboolean>(
-                "hasPermission", "(Landroid/hardware/usb/UsbDevice;)Z", device.object());
-    };
-    if (!hasPermission()) {
-        manager.callMethod<void>("requestPermission",
-                "(Landroid/hardware/usb/UsbDevice;Landroid/app/PendingIntent;)V",
-                device.object(),
-                mixxx::android::getIntent().object());
-        // Poll instead of mixxx::android::waitForPermission(): that one matches Java UsbDevice
-        // instances by reference, which differ between getDeviceList() calls.
+    if (!hasUsbPermission(manager, device)) {
+        // No nested event loop: the grant is visible through UsbManager without Qt events.
+        requestUsbPermission(manager, device);
         const auto deadline = std::chrono::steady_clock::now() +
                 std::chrono::milliseconds(kPermissionWaitMs);
-        while (!hasPermission()) {
+        while (!hasUsbPermission(manager, device)) {
             if (std::chrono::steady_clock::now() > deadline) {
-                m_lastError = QStringLiteral("USB permission was not granted");
+                m_lastError = QStringLiteral(
+                        "Allow USB access for the controller, then press Apply again.");
                 return false;
             }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
             QThread::msleep(100);
         }
     }
@@ -227,6 +251,7 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         return SoundDeviceStatus::Error;
     }
 
+    m_generation.fetch_add(1);
     m_halted = false;
     m_haltNotified = false;
     m_renderInit = false;
@@ -282,6 +307,25 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         return SoundDeviceStatus::Error;
     }
 
+    {
+        // Detects a halt even when the engine is no longer rendering (FIFO full, nothing pops).
+        const unsigned generation = m_generation.load();
+        std::shared_ptr<Shared> shared = m_shared;
+        m_pHaltTimer = new QTimer(m_pSoundManager);
+        m_pHaltTimer->setInterval(kHaltPollMs);
+        QObject::connect(m_pHaltTimer, &QTimer::timeout, m_pSoundManager, [shared, generation]() {
+            SoundDeviceUsbDirect* pDevice = shared->pDevice;
+            if (pDevice && pDevice->m_open.load() && pDevice->m_generation.load() == generation &&
+                    pDevice->m_pOut) {
+                const usbdirect::Halt reason = pDevice->m_pOut->stats().reason;
+                if (reason != usbdirect::Halt::None && reason != usbdirect::Halt::UserStop) {
+                    pDevice->onHalted(generation);
+                }
+            }
+        });
+        m_pHaltTimer->start();
+    }
+
     if (isClkRefDevice) {
         const double rate = m_sampleRate.toDouble();
         const double latencyMs = (static_cast<double>(target) + options.startDepth * rate / 1000.0) /
@@ -301,6 +345,11 @@ bool SoundDeviceUsbDirect::isOpen() const {
 
 void SoundDeviceUsbDirect::teardown() {
     m_open = false;
+    if (m_pHaltTimer) {
+        m_pHaltTimer->stop();
+        m_pHaltTimer->deleteLater(); // may be running inside its own timeout
+        m_pHaltTimer = nullptr;
+    }
     bool replugNeeded = false;
     // 1. Transport: stop() blocks until every transfer is reaped and the interface is released.
     if (m_pOut) {
@@ -346,8 +395,8 @@ SoundDeviceStatus SoundDeviceUsbDirect::close() {
     return SoundDeviceStatus::Ok;
 }
 
-void SoundDeviceUsbDirect::onHalted() {
-    if (!m_open.load()) {
+void SoundDeviceUsbDirect::onHalted(unsigned generation) {
+    if (!m_open.load() || generation != m_generation.load()) {
         return;
     }
     const usbdirect::Halt reason = m_pOut ? m_pOut->stats().reason : usbdirect::Halt::None;
@@ -386,11 +435,12 @@ void SoundDeviceUsbDirect::render(float* pInterleaved, int frames) {
                 !m_haltNotified.exchange(true)) {
             // Once per halt, from the engine thread; never stops anything from here.
             std::shared_ptr<Shared> shared = m_shared;
+            const unsigned generation = m_generation.load();
             QMetaObject::invokeMethod(
                     m_pSoundManager,
-                    [shared]() {
+                    [shared, generation]() {
                         if (shared->pDevice) {
-                            shared->pDevice->onHalted();
+                            shared->pDevice->onHalted(generation);
                         }
                     },
                     Qt::QueuedConnection);
