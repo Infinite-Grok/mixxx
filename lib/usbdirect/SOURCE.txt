@@ -1,0 +1,6 @@
+Vendored copy of tools/usbdirect from the VectorSTEMS repository (branch feature/android-usb-probe-20261011).
+Library commit: 47717f8 (I2a 5cd3e2a plus: packSample maps NaN to silence explicitly).
+Imported byte-for-byte with git archive; nothing in this directory was edited after import.
+Mixxx builds src/*.cpp through its own CMake target (see CMakeLists.txt, ANDROID section); the standalone
+CMakeLists.txt, test.sh and crosscompile.sh in this directory are not used by the Mixxx build.
+License: the library files carry no license header; their license must be settled by the author before any publication of a build containing them (test build only).

@@ -6,6 +6,9 @@
 #include "audio/types.h"
 #include "soundio/sounddevice.h"
 #include "soundio/soundmanager.h"
+#ifdef Q_OS_ANDROID
+#include "soundio/sounddeviceusbdirect.h"
+#endif
 #include "soundio/soundmanagerutil.h"
 #include "util/cmdlineargs.h"
 #include "util/math.h"
@@ -23,6 +26,7 @@ const QString SoundManagerConfig::kAPIIosAudio = QStringLiteral("iOS Audio");
 const QString SoundManagerConfig::kAPICoreAudio = QStringLiteral("Core Audio");
 const QString SoundManagerConfig::kAPIPipewire = QStringLiteral("PipeWire");
 const QString SoundManagerConfig::kAPIOboe = QStringLiteral("Android Oboe");
+const QString SoundManagerConfig::kAPIUsbDirect = QStringLiteral("USB Direct");
 
 const QString SoundManagerConfig::kEmptyComboBox = QStringLiteral("---");
 const unsigned int SoundManagerConfig::kDefaultDeckCount = 2;
@@ -599,6 +603,33 @@ void SoundManagerConfig::loadDefaults(SoundManager* soundManager, unsigned int f
                 multichannelRouted = true;
                 break;
             }
+        }
+        if (m_api == SoundManagerConfig::kAPIUsbDirect) {
+            // USB Direct: route by the profile's channel roles (MainL/R -> Main,
+            // PhonesL/R -> Headphones).
+            for (const auto& pDevice : outputDevices) {
+                const auto pUsb = qSharedPointerDynamicCast<SoundDeviceUsbDirect>(pDevice);
+                if (!pUsb) {
+                    continue;
+                }
+                if (pUsb->mainBase() >= 0) {
+                    addOutput(pDevice->getDeviceId(),
+                            AudioOutput(AudioPathType::Main,
+                                    static_cast<unsigned char>(pUsb->mainBase()),
+                                    mixxx::audio::ChannelCount::stereo(),
+                                    0));
+                }
+                if (pUsb->phonesBase() >= 0) {
+                    addOutput(pDevice->getDeviceId(),
+                            AudioOutput(AudioPathType::Headphones,
+                                    static_cast<unsigned char>(pUsb->phonesBase()),
+                                    mixxx::audio::ChannelCount::stereo(),
+                                    0));
+                }
+                defaultSampleRate = pDevice->getDefaultSampleRate();
+                break;
+            }
+            multichannelRouted = true;
         }
         if (multichannelRouted) {
             // Main + Headphones are set up, skip the single output default.

@@ -4,10 +4,12 @@
 
 #include <QLibrary>
 #include <QSharedPointer>
+#include <algorithm>
 
 #include "audio/types.h"
 #include "soundio/sounddevice.h"
 #include "soundio/sounddeviceportaudio.h"
+#include "soundio/soundmanagerconfig.h"
 #include "util/versionstore.h"
 
 #ifdef Q_OS_IOS
@@ -264,7 +266,62 @@ void PortAudioEnumerator::initialize() {
             m_apis.push_back(api->name);
         }
     }
+#ifdef Q_OS_ANDROID
+    refreshUsbDirect();
+#endif
 }
+
+QList<QString> PortAudioEnumerator::getAPIs() const {
+    QList<QString> apis = m_apis;
+#ifdef Q_OS_ANDROID
+    refreshUsbDirect();
+    std::lock_guard<std::mutex> lock(m_usbMutex);
+    if (!m_usbDevices.empty()) {
+        apis.push_back(SoundManagerConfig::kAPIUsbDirect);
+    }
+#endif
+    return apis;
+}
+
+void PortAudioEnumerator::refreshDevices(const QString& api) const {
+#ifdef Q_OS_ANDROID
+    if (api == SoundManagerConfig::kAPIUsbDirect) {
+        refreshUsbDirect();
+    }
+#else
+    Q_UNUSED(api);
+#endif
+}
+
+#ifdef Q_OS_ANDROID
+void PortAudioEnumerator::refreshUsbDirect() const {
+    // Main thread. JNI work happens outside the lock; the lock only guards the vector swap.
+    // A device that is open is never dropped, and an existing device object is reused for the
+    // same profile so stored ids and shared pointers stay valid.
+    size_t count = 0;
+    const usbdirect::DeviceProfile* table = usbdirect::profiles(&count);
+    const auto attached = SoundDeviceUsbDirect::attachedProfiles();
+
+    std::lock_guard<std::mutex> lock(m_usbMutex);
+    std::vector<QSharedPointer<SoundDeviceUsbDirect>> next;
+    for (size_t i = 0; i < count; i++) {
+        QSharedPointer<SoundDeviceUsbDirect> existing;
+        for (const auto& dev : m_usbDevices) {
+            if (dev->profile() == &table[i]) {
+                existing = dev;
+            }
+        }
+        const bool present = std::find(attached.begin(), attached.end(), &table[i]) != attached.end();
+        if (existing && (present || existing->isOpen())) {
+            next.push_back(existing);
+        } else if (present) {
+            next.push_back(QSharedPointer<SoundDeviceUsbDirect>::create(
+                    m_pConfig, m_pSoundManager, &table[i], static_cast<unsigned int>(i)));
+        }
+    }
+    m_usbDevices.swap(next);
+}
+#endif
 
 std::vector<SoundDevicePointer> PortAudioEnumerator::queryDevices() const {
     if (!m_initialized) {
@@ -275,6 +332,14 @@ std::vector<SoundDevicePointer> PortAudioEnumerator::queryDevices() const {
     for (const auto& device : m_devices) {
         devices.push_back(device);
     }
+#ifdef Q_OS_ANDROID
+    {
+        std::lock_guard<std::mutex> lock(m_usbMutex);
+        for (const auto& device : m_usbDevices) {
+            devices.push_back(device);
+        }
+    }
+#endif
 
     return devices;
 }

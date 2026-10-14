@@ -2414,7 +2414,7 @@ if(QT6)
     set_property(TARGET mixxx-lib PROPERTY ANDROID_ABIS "arm64-v8a")
     target_compile_definitions(
       mixxx-lib
-      PUBLIC ANDROID_PACKAGE_NAME="io.github.infinitegrok.mixxxpreview"
+      PUBLIC ANDROID_PACKAGE_NAME="io.github.infinitegrok.mixxxpreview.usbdirect"
     )
     qt_add_executable(mixxx src/main.cpp MANUAL_FINALIZATION)
     set_property(
@@ -2428,13 +2428,13 @@ if(QT6)
     # Qt derives the Gradle applicationId from the Java namespace (org.mixxx),
     # which must stay for the Java classes, so tools/android-preview/
     # assemble_release.sh sets the applicationId in the generated build.gradle.
-    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "io.github.infinitegrok.mixxxpreview")
+    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "io.github.infinitegrok.mixxxpreview.usbdirect")
     # libremidi's Android backend needs AMidi (API 29) and JNI_GetCreatedJavaVMs
     # (API 31), so the preview needs minSdk 31. Upstream keeps the Qt default.
     set_target_properties(mixxx PROPERTIES QT_ANDROID_MIN_SDK_VERSION 31)
     # Preview release number. versionCode = MAJOR*1000000 + MINOR*10000 +
     # PATCH*100 + PREVIEW (0.1.0-preview.1 -> 10001); it must only ever grow.
-    set(MIXXX_ANDROID_PREVIEW_VERSION_NAME "0.1.0-preview.1" CACHE STRING "Android preview versionName")
+    set(MIXXX_ANDROID_PREVIEW_VERSION_NAME "0.1.0-usbdirect.1" CACHE STRING "Android preview versionName")
     set(MIXXX_ANDROID_PREVIEW_VERSION_CODE "10001" CACHE STRING "Android preview versionCode")
     set_target_properties(
       mixxx
@@ -5506,6 +5506,28 @@ if(BULK)
   if(QML)
     target_compile_definitions(mixxx-qml-lib PUBLIC __BULK__)
   endif()
+endif()
+
+# Android "USB Direct" sound device (see USB-DIRECT.md): isochronous USB audio output through
+# the vendored lib/usbdirect (SOURCE.txt names the library commit) and the libusb above.
+if(ANDROID)
+  if(NOT BULK OR NOT LibUSB_FOUND)
+    message(FATAL_ERROR "The Android USB Direct sound device requires libusb (BULK=ON).")
+  endif()
+  find_package(Threads REQUIRED)
+  add_library(
+    usbdirect
+    STATIC
+    lib/usbdirect/src/usb_audio_out.cpp
+    lib/usbdirect/src/device_profile.cpp
+    lib/usbdirect/src/engine_pump.cpp
+  )
+  target_compile_features(usbdirect PUBLIC cxx_std_17)
+  target_include_directories(usbdirect PUBLIC lib/usbdirect/include)
+  target_compile_options(usbdirect PRIVATE -Wall -Wextra)
+  target_link_libraries(usbdirect PUBLIC LibUSB::LibUSB Threads::Threads)
+  target_sources(mixxx-lib PRIVATE src/soundio/sounddeviceusbdirect.cpp)
+  target_link_libraries(mixxx-lib PRIVATE usbdirect)
 endif()
 
 # Vinyl Control

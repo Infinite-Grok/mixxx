@@ -161,6 +161,13 @@ Rectangle {
         // case "PulseAudio":
         // case "sndio":
 
+        case "USB Direct":
+            {
+                // Device names look like "<product> (USB Direct)".
+                const suffix = " (USB Direct)";
+                const card = rawName.endsWith(suffix) ? rawName.slice(0, rawName.length - suffix.length) : rawName;
+                return [card, "USB Direct"];
+            }
         case "Android Oboe":
         case "ALSA":
             {

@@ -115,6 +115,10 @@ class SoundManager : public QObject {
     }
 
     void updateDeviceChannels(SoundDevicePointer pDevice);
+#ifdef Q_OS_ANDROID
+    /// Main thread only: a running device (USB Direct) stopped by itself.
+    void deviceFailed(const SoundDevice* pFailed);
+#endif
     /// Android: route Main (ch 1-2) and Headphones (ch 3-4) on the first
     /// output with at least four channels when no config exists yet.
     /// Preference [Android],usb_multichannel_default, default on.

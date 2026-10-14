@@ -31,6 +31,10 @@
 #include "soundio/pipewireenumerator.h"
 #endif
 
+#ifdef Q_OS_ANDROID
+#include "usbdirect/device_profile.h"
+#endif
+
 namespace {
 
 const QString kAppGroup = QStringLiteral("[App]");
@@ -129,6 +133,7 @@ QList<SoundDevicePointer> SoundManager::getDeviceList(
     if (filterAPI == SoundManagerConfig::kAPINone) {
         return QList<SoundDevicePointer>();
     }
+    m_pEnumerator->refreshDevices(filterAPI);
 
     // Create a list of sound devices filtered to match given API and
     // input/output.
@@ -254,6 +259,21 @@ void SoundManager::clearDeviceList(bool sleepAfterClosing) {
 }
 
 QList<mixxx::audio::SampleRate> SoundManager::getSampleRates(const QString& api) const {
+#ifdef Q_OS_ANDROID
+    if (api == SoundManagerConfig::kAPIUsbDirect) {
+        // The USB Direct transport only runs at the registry profile rate.
+        QList<mixxx::audio::SampleRate> rates;
+        size_t count = 0;
+        const usbdirect::DeviceProfile* profiles = usbdirect::profiles(&count);
+        for (size_t i = 0; i < count; i++) {
+            const mixxx::audio::SampleRate rate(profiles[i].format.sampleRate);
+            if (!rates.contains(rate)) {
+                rates.push_back(rate);
+            }
+        }
+        return rates;
+    }
+#endif
     QList<mixxx::audio::SampleRate> samplerates =
             m_pEnumerator->getSampleRates(api == SoundManagerConfig::kAPIJack);
     if (!samplerates.empty()) {
@@ -740,6 +760,23 @@ void SoundManager::devicesEnumerated() {
     }
 #endif
 }
+
+#ifdef Q_OS_ANDROID
+void SoundManager::deviceFailed(const SoundDevice* pFailed) {
+    // A running sound device stopped by itself (e.g. USB detach). Close everything the way
+    // closeDevices() does, remember the device as the error device so that the usual error
+    // message path names it, and report the sound status as disconnected.
+    for (const auto& pDevice : m_pEnumerator->queryDevices()) {
+        if (pDevice.data() == pFailed) {
+            m_pErrorDevice = pDevice;
+        }
+        if (pDevice->isOpen()) {
+            pDevice->close();
+        }
+    }
+    completeDevicesClosing();
+}
+#endif
 
 void SoundManager::invalidateConfig() {
     qDebug() << "SoundManager::invalidateConfig";
