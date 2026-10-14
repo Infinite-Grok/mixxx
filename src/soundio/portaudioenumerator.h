@@ -10,7 +10,7 @@
 #include "soundio/sounddeviceenumerator.h"
 #include "soundio/sounddeviceportaudio.h"
 #ifdef Q_OS_ANDROID
-#include "soundio/sounddeviceusbdirect.h"
+class SoundDeviceUsbDirect; // defined in sounddeviceusbdirect.h (not visible to mixxx-qml-lib)
 #endif
 
 class PortAudioEnumerator : public SoundDeviceEnumerator {

@@ -9,6 +9,9 @@
 #include "audio/types.h"
 #include "soundio/sounddevice.h"
 #include "soundio/sounddeviceportaudio.h"
+#ifdef Q_OS_ANDROID
+#include "soundio/sounddeviceusbdirect.h"
+#endif
 #include "soundio/soundmanagerconfig.h"
 #include "util/versionstore.h"
 
