@@ -10,6 +10,7 @@
 #include <QThread>
 #include <QtDebug>
 #include <algorithm>
+#include <cstdio>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -33,6 +34,7 @@ constexpr int kCpuUsageUpdateRate = 30; // 1/s, same as the PortAudio device
 constexpr int kPermissionWaitMs = 3000;
 constexpr int kPermissionReRequestMs = 10000;
 constexpr int kHaltPollMs = 200;
+constexpr int kStatsEveryTicks = 10000 / kHaltPollMs; // one stats line per 10 s
 // Extra frames the FIFO keeps beyond one engine block (covers render time and wake-up latency).
 constexpr size_t kFifoMarginFrames = 256;
 
@@ -317,6 +319,10 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
             SoundDeviceUsbDirect* pDevice = shared->pDevice;
             if (pDevice && pDevice->m_open.load() && pDevice->m_generation.load() == generation &&
                     pDevice->m_pOut) {
+                if (++pDevice->m_statsTick >= kStatsEveryTicks) {
+                    pDevice->m_statsTick = 0;
+                    pDevice->logStats("periodic");
+                }
                 const usbdirect::Halt reason = pDevice->m_pOut->stats().reason;
                 if (reason != usbdirect::Halt::None && reason != usbdirect::Halt::UserStop) {
                     pDevice->onHalted(generation);
@@ -325,6 +331,9 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         });
         m_pHaltTimer->start();
     }
+    m_statsTick = 0;
+    m_statsElapsed.start();
+    logStats("open");
 
     if (isClkRefDevice) {
         const double rate = m_sampleRate.toDouble();
@@ -343,7 +352,47 @@ bool SoundDeviceUsbDirect::isOpen() const {
     return m_open.load();
 }
 
+void SoundDeviceUsbDirect::logStats(const char* what) {
+    if (!m_pOut) {
+        return;
+    }
+    const usbdirect::Stats s = m_pOut->stats();
+    const unsigned long long overruns = m_pPump ? m_pPump->renderOverruns() : 0;
+    char line[512];
+    snprintf(line,
+            sizeof(line),
+            "%s t=%llds depth=%u depthChanges=%u gapExceedDepth=%llu "
+            "gapHist(>1.5/2/3/4/5/8ms)=%llu/%llu/%llu/%llu/%llu/%llu gapMaxUs=%llu "
+            "engineUnderruns=%llu renderOverruns=%llu errors=%llu fifoFill=%zu/%zu "
+            "usbQueuedFrames=%llu feedbackHz=%.3f halt=%s",
+            what,
+            static_cast<long long>(m_statsElapsed.isValid() ? m_statsElapsed.elapsed() / 1000 : 0),
+            s.depth,
+            s.depthChanges,
+            static_cast<unsigned long long>(s.gapExceedDepth),
+            static_cast<unsigned long long>(s.gapHist[0]),
+            static_cast<unsigned long long>(s.gapHist[1]),
+            static_cast<unsigned long long>(s.gapHist[2]),
+            static_cast<unsigned long long>(s.gapHist[3]),
+            static_cast<unsigned long long>(s.gapHist[4]),
+            static_cast<unsigned long long>(s.gapHist[5]),
+            static_cast<unsigned long long>(s.gapMaxNs / 1000),
+            static_cast<unsigned long long>(s.engineUnderruns),
+            overruns,
+            static_cast<unsigned long long>(s.errors),
+            s.fifoFill,
+            s.fifoCapacity,
+            static_cast<unsigned long long>(s.usbQueuedFrames),
+            s.feedbackHz,
+            usbdirect::haltName(s.reason));
+    __android_log_print(ANDROID_LOG_INFO, "UsbDirect", "%s", line);
+    qInfo("UsbDirect %s", line);
+}
+
 void SoundDeviceUsbDirect::teardown() {
+    if (m_open.load()) {
+        logStats("final"); // transport still live: last consistent snapshot
+    }
     m_open = false;
     if (m_pHaltTimer) {
         m_pHaltTimer->stop();

@@ -5,6 +5,7 @@
 // transfers via lib/usbdirect, bypassing Android's audio stack. See USB-DIRECT.md.
 
 #include <QJniObject>
+#include <QElapsedTimer>
 #include <QPointer>
 #include <QString>
 #include <QTimer>
@@ -62,6 +63,8 @@ class SoundDeviceUsbDirect : public SoundDevice {
     struct Shared; // liveness token for notifications queued to the main thread
     void render(float* interleaved, int frames);
     void onHalted(unsigned generation);
+    // One line to logcat (tag UsbDirect) and qInfo; main thread only, reads the atomic snapshot.
+    void logStats(const char* what);
     // Ordered shutdown (transport, then pump, then Java connection); idempotent.
     void teardown();
     bool acquireConnection(std::vector<unsigned char>* pRaw, int* pFd);
@@ -77,6 +80,8 @@ class SoundDeviceUsbDirect : public SoundDevice {
     // Bumped on every open(); queued halt notifications from an earlier session are ignored.
     std::atomic<unsigned> m_generation{0};
     QPointer<QTimer> m_pHaltTimer; // main-thread poll of the transport halt reason
+    QElapsedTimer m_statsElapsed;
+    int m_statsTick = 0;
     std::atomic<bool> m_halted{false};
     std::atomic<bool> m_haltNotified{false};
     std::atomic<bool> m_renderInit{false};
