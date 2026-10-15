@@ -697,6 +697,9 @@ void allshader::WaveformRenderMark::updateMarkImage(WaveformMarkPointer pMark) {
         pGraphics->updateTexture(m_waveformRenderer->getContext(),
                 pMark->generateImage(
                         m_waveformRenderer->getDevicePixelRatio()));
+        // The image is current now. Without this the flag stays set forever
+        // and the image is rasterised again on every frame.
+        pGraphics->m_obsolete = false;
     }
 }
 void allshader::WaveformRenderMark::updateEndMarkImage(WaveformMarkPointer pMark) {
@@ -712,6 +715,9 @@ void allshader::WaveformRenderMark::updateEndMarkImage(WaveformMarkPointer pMark
         pGraphics->updateTexture(m_waveformRenderer->getContext(),
                 pMark->generateEndImage(
                         m_waveformRenderer->getDevicePixelRatio()));
+        // The image is current now. Without this the flag stays set forever
+        // and the image is rasterised again on every frame.
+        pGraphics->m_obsolete = false;
     }
 }
 
