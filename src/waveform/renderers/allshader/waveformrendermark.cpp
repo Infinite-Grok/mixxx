@@ -325,6 +325,25 @@ bool allshader::WaveformRenderMark::isSubtreeBlocked() const {
     return m_isSlipRenderer && !m_waveformRenderer->isSlipActive();
 }
 
+int allshader::WaveformRenderMark::numMarkBoxes() const {
+    const TrackPointer trackInfo = m_waveformRenderer->getTrackInfo();
+    const bool isStemTrack = trackInfo && trackInfo->hasStem() &&
+            trackInfo->getWaveform() && trackInfo->getWaveform()->hasStem();
+    const bool splitStemTracks = isStemTrack &&
+            WaveformWidgetFactory::instance()->isStemSplitTracks();
+    return (splitStemTracks && m_waveformRenderer->isSlipActive())
+            ? mixxx::kMaxSupportedStems
+            : 1;
+}
+
+// Single source for the breadth of this renderer's marks, used by both
+// onResize() (base class) and update(). (I6c)
+float allshader::WaveformRenderMark::markBreadth() const {
+    const float boxBreadth = static_cast<float>(m_waveformRenderer->getBreadth()) /
+            static_cast<float>(numMarkBoxes());
+    return m_waveformRenderer->isSlipActive() ? (boxBreadth / 2.f) : boxBreadth;
+}
+
 void allshader::WaveformRenderMark::update() {
     if (isSubtreeBlocked()) {
         return;
@@ -358,16 +377,9 @@ void allshader::WaveformRenderMark::update() {
                                          : ::WaveformRendererAbstract::Play;
     bool slipActive = m_waveformRenderer->isSlipActive();
 
-    const TrackPointer trackInfo = m_waveformRenderer->getTrackInfo();
-    const bool isStemTrack = trackInfo && trackInfo->hasStem() &&
-            trackInfo->getWaveform() && trackInfo->getWaveform()->hasStem();
-    const bool splitStemTracks = isStemTrack &&
-            WaveformWidgetFactory::instance()->isStemSplitTracks();
-
-    const float breadth = m_waveformRenderer->getBreadth();
-    const int numBoxes = (splitStemTracks && slipActive) ? mixxx::kMaxSupportedStems : 1;
-    const float boxBreadth = breadth / static_cast<float>(numBoxes);
-    const float markBreadth = slipActive ? (boxBreadth / 2.f) : boxBreadth;
+    const int numBoxes = numMarkBoxes();
+    const float boxBreadth = static_cast<float>(m_waveformRenderer->getBreadth()) /
+            static_cast<float>(numBoxes);
     const float yOffset = !m_isSlipRenderer && slipActive
             ? (boxBreadth / 2.f)
             : 0.f;
@@ -379,7 +391,7 @@ void allshader::WaveformRenderMark::update() {
     auto roundToPixel = createFunctionRoundToPixel(devicePixelRatio);
 
     for (const auto& pMark : std::as_const(m_marks)) {
-        pMark->setBreadth(markBreadth);
+        pMark->setBreadth(markBreadth());
     }
 
     updatePlayPosMarkTexture(m_waveformRenderer->getContext());

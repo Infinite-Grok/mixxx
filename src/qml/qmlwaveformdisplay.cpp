@@ -22,6 +22,7 @@
 #include "rendergraph/context.h"
 #include "rendergraph/node.h"
 #include "util/assert.h"
+#include "waveform/renderers/markimagestats.h"
 #include "waveform/visualplayposition.h"
 
 using namespace allshader;
@@ -288,8 +289,17 @@ void QmlWaveformDisplay::setStaticTrack(QmlTrackProxy* track) {
     update();
 }
 
-void QmlWaveformDisplay::slotWindowChanged(QQuickWindow* window) {
+void QmlWaveformDisplay::markWindowDirty(const char* reason) {
+    // Every Window flag rebuilds the whole renderer stack, including every
+    // WaveformMark (I6c: this is counted so a storm is attributable).
+    MarkImageStats::Scope statsScope(
+            getGroup() + QStringLiteral("/dirty:") + QLatin1String(reason));
+    MarkImageStats::noteCause(MarkImageStats::Other);
     m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+}
+
+void QmlWaveformDisplay::slotWindowChanged(QQuickWindow* window) {
+    markWindowDirty("window-changed");
     if (window) {
         connect(window,
                 &QQuickWindow::afterFrameEnd,
@@ -304,10 +314,14 @@ void QmlWaveformDisplay::slotWindowChanged(QQuickWindow* window) {
 }
 
 void QmlWaveformDisplay::setOptions(mixxx::qml::WaveformRendererSignalBaseOptions options) {
+    if (m_options == options) {
+        // Re-assigning identical options must not rebuild the renderer stack.
+        return;
+    }
     m_options = options;
     emit optionsChanged(options);
 
-    m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+    markWindowDirty("options");
     update();
 }
 
@@ -315,7 +329,7 @@ void QmlWaveformDisplay::refreshRenderers() {
     // Renderer objects and their render-graph nodes live on the scene-graph
     // thread. Only mark the item dirty here; updatePaintNode() clears and
     // rebuilds the stack on that thread.
-    m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+    markWindowDirty("refresh");
     update();
 }
 
@@ -421,6 +435,7 @@ void QmlWaveformDisplay::geometryChange(const QRectF& newGeometry, const QRectF&
 }
 
 QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*) {
+    const bool windowFlagWasSet = m_dirtyFlag.testFlag(DirtyFlag::Window);
     if (m_dirtyFlag.testFlag(DirtyFlag::Window)) {
         delete node;
         node = nullptr;
@@ -433,6 +448,11 @@ QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*
     auto* pBgNode = pClipNode ? dynamic_cast<QSGSimpleRectNode*>(pClipNode->lastChild()) : nullptr;
 
     if (!pBgNode) {
+        if (!windowFlagWasSet) {
+            // Qt handed us no node although nothing asked for a rebuild.
+            MarkImageStats::Scope statsScope(getGroup() + QStringLiteral("/dirty:qt-node-reset"));
+            MarkImageStats::noteCause(MarkImageStats::Other);
+        }
         if (pClipNode) {
             delete pClipNode;
         }
@@ -617,13 +637,13 @@ void QmlWaveformDisplay::renderers_append(
     VERIFY_OR_DEBUG_ASSERT(pWaveform) {
         return;
     }
-    pWaveform->m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+    pWaveform->markWindowDirty("renderers-append");
     pWaveform->m_waveformRenderers.append(value);
     QObject::connect(value,
             &QmlWaveformRendererFactory::enabledChanged,
             pWaveform,
             [pWaveform]() {
-                pWaveform->m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+                pWaveform->markWindowDirty("factory-enabled");
                 pWaveform->update();
             });
 }
@@ -634,7 +654,7 @@ qsizetype QmlWaveformDisplay::renderers_count(QQmlListProperty<QmlWaveformRender
     VERIFY_OR_DEBUG_ASSERT(pWaveform) {
         return 0;
     }
-    pWaveform->m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+    // Read accessor: must not dirty the renderer stack (I6c).
     return pWaveform->m_waveformRenderers.count();
 }
 
@@ -648,7 +668,7 @@ QmlWaveformRendererFactory* QmlWaveformDisplay::renderers_at(
     VERIFY_OR_DEBUG_ASSERT(pWaveform) {
         return nullptr;
     }
-    pWaveform->m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+    // Read accessor: must not dirty the renderer stack (I6c).
     return pWaveform->m_waveformRenderers.at(index);
 }
 
@@ -658,7 +678,7 @@ void QmlWaveformDisplay::renderers_clear(QQmlListProperty<QmlWaveformRendererFac
     VERIFY_OR_DEBUG_ASSERT(pWaveform) {
         return;
     }
-    pWaveform->m_dirtyFlag.setFlag(DirtyFlag::Window, true);
+    pWaveform->markWindowDirty("renderers-clear");
     return pWaveform->m_waveformRenderers.clear();
 }
 

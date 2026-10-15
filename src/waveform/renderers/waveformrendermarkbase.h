@@ -51,6 +51,11 @@ class WaveformRenderMarkBase : public QObject, public WaveformRendererAbstract {
   protected:
     WaveformMarkSet m_marks;
 
+    // The one place that decides the breadth of this renderer's marks. Both
+    // onResize() and the per-frame update() of subclasses must use it, so
+    // they can never set conflicting values (which regenerates mark images).
+    virtual float markBreadth() const;
+
     void updateMarkImages();
 
   private:

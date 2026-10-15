@@ -64,6 +64,8 @@ class allshader::WaveformRenderMark : public ::WaveformRenderMarkBase,
     void setDefaultNextMarkPosition(double nextMarkPosition);
 
   private:
+    float markBreadth() const override;
+    int numMarkBoxes() const;
     void updateMarkImage(WaveformMarkPointer pMark) override;
     void updateEndMarkImage(WaveformMarkPointer pMark) override;
 

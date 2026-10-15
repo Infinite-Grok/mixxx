@@ -37,10 +37,14 @@ void WaveformRenderMarkBase::onSetTrack() {
 
 void WaveformRenderMarkBase::onResize() {
     MarkImageStats::Scope statsScope(m_waveformRenderer->getGroup() + QStringLiteral("/resize"));
-    m_marks.setBreadth(m_waveformRenderer->getBreadth());
+    m_marks.setBreadth(markBreadth());
     if (m_updateImagesImmediately) {
         updateMarkImages();
     }
+}
+
+float WaveformRenderMarkBase::markBreadth() const {
+    return static_cast<float>(m_waveformRenderer->getBreadth());
 }
 
 void WaveformRenderMarkBase::onMarkChanged(double v) {

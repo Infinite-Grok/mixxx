@@ -135,6 +135,7 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
         return m_options;
     }
     void setOptions(WaveformRendererSignalBaseOptions options);
+    void markWindowDirty(const char* reason);
 
     // Recreate the scene-graph renderer stack after a setting changes which
     // renderer is enabled. The renderer factories are declared in QML, while
