@@ -135,3 +135,6 @@ versionName 0.1.0-usbdirect.7: 8 samplers on Android, Developer tools window cre
 
 ## I5
 versionName 0.1.0-usbdirect.8: T7 platter script CPU cut, behaviour identical (one decay timer per deck re-checking a deadline, lookup tables instead of regex/template strings, cached track_loaded, reused placement/tick arrays). Script only; test app only.
+
+## I6
+allshader::WaveformRenderMark::updateMarkImage/updateEndMarkImage now clear Graphics::m_obsolete after updateTexture(); previously mark images were rasterised on every frame once flagged.
