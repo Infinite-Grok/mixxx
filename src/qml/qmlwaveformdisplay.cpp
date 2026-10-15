@@ -332,8 +332,16 @@ bool QmlWaveformDisplay::hasTrackToDraw() const {
     return m_pTrack != nullptr || getTrackInfo() != nullptr;
 }
 
+double QmlWaveformDisplay::renderedEnginePlayPos() const {
+    // The renderer draws from WaveformWidgetRenderer::m_visualPlayPosition. In player mode (group set) that is the
+    // object fed by the engine; the derived member of the same name is a private dummy used only by the static
+    // track / position property path (where setStaticTrack binds both to the same object).
+    const auto& pRendered = WaveformWidgetRenderer::m_visualPlayPosition;
+    return pRendered ? pRendered->getEnginePlayPos() : 0.0;
+}
+
 bool QmlWaveformDisplay::drawnStateChanged() const {
-    return m_visualPlayPosition->getEnginePlayPos() !=
+    return renderedEnginePlayPos() !=
             m_drawnPlayPos.load(std::memory_order_relaxed) ||
             getZoom() != m_drawnZoom.load(std::memory_order_relaxed);
 }
@@ -494,7 +502,7 @@ QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*
     }
 
     onPreRender(this);
-    m_drawnPlayPos.store(m_visualPlayPosition->getEnginePlayPos(), std::memory_order_relaxed);
+    m_drawnPlayPos.store(renderedEnginePlayPos(), std::memory_order_relaxed);
     m_drawnZoom.store(getZoom(), std::memory_order_relaxed);
 
     for (auto* pRenderer : std::as_const(m_rendererStack)) {

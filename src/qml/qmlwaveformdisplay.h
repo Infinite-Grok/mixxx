@@ -168,6 +168,8 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
     // Idle redraw throttling: true if nothing visible depends on the clock (no track, or paused with an unchanged
     // position and zoom since the last drawn frame).
     bool hasTrackToDraw() const;
+    // Engine play position of the VisualPlayPosition the renderer actually draws from (the base class member).
+    double renderedEnginePlayPos() const;
     bool drawnStateChanged() const;
     void slotIdlePoll();
 
