@@ -8,7 +8,9 @@
 #include <QQmlEngineExtensionPlugin>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QTextDocument>
+#include <QThread>
 #include <memory>
 #include <utility>
 
@@ -394,6 +396,26 @@ QmlApplication::QmlApplication(
 
 void QmlApplication::slotWindowChanged(QQuickWindow* window) {
     if (window) {
+        // I6b diagnostics: sceneGraphInitialized is emitted on the thread that
+        // renders. A render thread different from the GUI thread means the
+        // threaded render loop, the same thread means the basic loop.
+        connect(window,
+                &QQuickWindow::sceneGraphInitialized,
+                window,
+                [window]() {
+                    const bool onGuiThread =
+                            QThread::currentThread() == QCoreApplication::instance()->thread();
+                    const auto api = window->rendererInterface()
+                            ? window->rendererInterface()->graphicsApi()
+                            : QSGRendererInterface::Unknown;
+                    qInfo() << "Qt Quick render loop:"
+                            << (onGuiThread ? "BASIC (scene graph initialized on the GUI thread)"
+                                            : "THREADED (scene graph initialized on a render thread)")
+                            << "thread" << QThread::currentThread()->objectName()
+                            << "graphicsApi" << static_cast<int>(api)
+                            << "QSG_RENDER_LOOP env" << qgetenv("QSG_RENDER_LOOP");
+                },
+                Qt::DirectConnection);
         connect(window,
                 &QQuickWindow::afterFrameEnd,
                 this,
