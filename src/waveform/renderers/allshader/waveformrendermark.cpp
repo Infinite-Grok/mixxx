@@ -481,7 +481,7 @@ void allshader::WaveformRenderMark::update() {
                     updateRangeNode(pRangeChild,
                             QRectF(QPointF(roundToPixel(currentMarkPos), 0.f),
                                     QPointF(roundToPixel(currentMarkEndPos),
-                                            roundToPixel(markBreadth))),
+                                            roundToPixel(markBreadth()))),
                             numBoxes,
                             boxBreadth,
                             roundToPixel(yOffset),
