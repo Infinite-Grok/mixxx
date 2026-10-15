@@ -144,3 +144,6 @@ versionName 0.1.0-usbdirect.10. Test instrumentation only: (1) `src/waveform/ren
 
 ## I6c
 versionName 0.1.0-usbdirect.11. Mark breadth is single-sourced (`WaveformRenderMarkBase::markBreadth()`, overridden by `allshader::WaveformRenderMark`; used by `onResize()` and `update()`). `QmlWaveformDisplay`: read accessors `renderers_count/at` no longer flag a full renderer-stack rebuild, identical `setOptions` is a no-op, and every rebuild trigger is counted in the `MarkImageStats` line as `[ChannelN]/dirty:<reason>` (`qt-node-reset` = Qt passed no node); mark construction is labelled `[ChannelN]/create`.
+
+## I6d
+versionName 0.1.0-usbdirect.12. QmlWaveformDisplay keeps its paint-node root in members (pointer identity instead of dynamic_cast on children) and counts every way Qt can drop it in the MarkImageStats line as [ChannelN]/node:<reason> (null, foreign, release-resources, scene-in, scene-out, visible, hidden, parent).
