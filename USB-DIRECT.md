@@ -126,3 +126,6 @@ The permission PendingIntent is now an explicit intent (setPackage) with FLAG_MU
 
 ## I3d: keep cpu0 free for the USB interrupt (2026-10-16)
 Isolation now leaves cpu0 (where the xHCI interrupt fires) to the interrupt path. Automatic other mask = allowed & ~audio & ~cpu0 when at least 2 CPUs remain, else the I3b value. [Android] usb_direct_isolate_other_mask: -1 (default) = automatic, else a hex/decimal mask applied as mask & allowed & ~audio (empty result skips isolation and logs why). Log and stats show the applied other= mask.
+
+## I3e: audio threads share the whole big-core set (2026-10-16)
+Automatic event and pump masks are now both the whole big-core set (when it has at least 2 CPUs; with 1 big CPU nothing is pinned). Single-core pins made the threads wait behind kswapd/kcompactd/GC that EAS moves onto the big cores under isolation. The isolation audio mask is still the union of the two applied masks (= the big set), so other threads stay off it; cpu0 rule unchanged. Explicit ini values (usb_direct_event_cpu_mask / usb_direct_pump_cpu_mask) behave as before, so single-core pins stay available for A/B. The start log line prints the masks as applied.

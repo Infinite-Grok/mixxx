@@ -271,15 +271,17 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
 
     usbdirect::Options options; // defaults: depth 12 adaptive 4..16, nice -19 event thread
     {
-        // Thread placement (I3a): event thread on the highest big core, pump on the next one.
+        // Thread placement (I3e): both threads may run on the whole big-core set (a single-core pin
+        // makes them wait behind kswapd/GC that EAS moves onto the big cores under isolation).
+        // With a single big CPU nothing is pinned.
         // [Android] usb_direct_event_cpu_mask / usb_direct_pump_cpu_mask: -1 = automatic, 0 = no
         // pinning, else a mask of CPUs 0..7 (decimal or 0x hex). usb_direct_adpf (default 1).
         const std::vector<int> big = usbdirect::bigCpus();
         uint32_t autoEvent = 0;
         uint32_t autoPump = 0;
         if (big.size() >= 2) {
-            autoEvent = usbdirect::cpuMaskOf({big[big.size() - 1]});
-            autoPump = usbdirect::cpuMaskOf({big[big.size() - 2]});
+            autoEvent = usbdirect::cpuMaskOf(big);
+            autoPump = autoEvent;
         }
         const auto resolve = [this](const char* key, uint32_t autoMask) {
             const QString text = m_pConfig->getValue(
