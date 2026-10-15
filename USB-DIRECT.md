@@ -141,3 +141,6 @@ allshader::WaveformRenderMark::updateMarkImage/updateEndMarkImage now clear Grap
 
 ## I6b
 versionName 0.1.0-usbdirect.10. Test instrumentation only: (1) `src/waveform/renderers/markimagestats.h` counts `setNeedsImageUpdate` calls by cause (breadth, level, text, color, jump, other) and real main/end image regenerations per renderer label (`[ChannelN]/main|slip|resize|cues|marks`), and logs one `MarkImageStats 10s:` qInfo line per 10 s when something was counted. (2) On Android `main()` sets `QSG_INFO=1` (Qt logs the chosen render loop) and, if `<app files dir>/qsg_render_loop` exists containing `threaded` or `basic`, sets `QSG_RENDER_LOOP` before the QGuiApplication is created; `QmlApplication` logs "Qt Quick render loop: BASIC/THREADED" from `sceneGraphInitialized`.
+
+## I6c
+versionName 0.1.0-usbdirect.11. Mark breadth is single-sourced (`WaveformRenderMarkBase::markBreadth()`, overridden by `allshader::WaveformRenderMark`; used by `onResize()` and `update()`). `QmlWaveformDisplay`: read accessors `renderers_count/at` no longer flag a full renderer-stack rebuild, identical `setOptions` is a no-op, and every rebuild trigger is counted in the `MarkImageStats` line as `[ChannelN]/dirty:<reason>` (`qt-node-reset` = Qt passed no node); mark construction is labelled `[ChannelN]/create`.
