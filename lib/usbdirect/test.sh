@@ -18,6 +18,7 @@ run depth_test tests/depth_test.cpp
 run fifo_test tests/fifo_test.cpp
 run cpu_capacity_test tests/cpu_capacity_test.cpp
 run cpu_isolation_test tests/cpu_isolation_test.cpp
+run play_delay_test tests/play_delay_test.cpp
 SRC="src/usb_audio_out.cpp src/device_profile.cpp"
 run device_profile_test tests/device_profile_test.cpp src/device_profile.cpp
 run usb_audio_out_test tests/usb_audio_out_test.cpp tests/fake_libusb.cpp $SRC -lm

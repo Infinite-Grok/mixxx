@@ -88,3 +88,11 @@ Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4).
    give the tids to skip. Config `[Android] usb_direct_isolate` (default 1, 0 = off). The stats line gains
    `isolate= moved= failed=`; one `core isolation:` line at open logs the masks in hex. Also: the
    PortAudioEnumerator pin log resets to decimal after the hex mask.
+2. **VisualPlayPosition reference.** `usbdirect/play_delay.h` (`dacDelaySecs`, host-tested) computes the delay of
+   the block being rendered to the DAC: at the entry of `render()` that block is not in the FIFO yet, so it is
+   `(usbQueuedFrames + fifoFrames) / sampleRate` (the block itself is not counted; the USB snapshot can lag by at most
+   one packet, about 1 ms, and no device-side constant is added without measurements). The reference timer is
+   restarted at the same point. The value must lie in `[0, 2 x expected latency]` (the `output_latency_ms` value);
+   otherwise the previous value, advanced by one block minus the time since the previous render, is used (the
+   PortAudio fallback idea). `VisualPlayPosition` logs the "outdated position request" and "no transport" warnings at
+   most once per 10 s per kind for all devices, with the number of suppressed warnings.

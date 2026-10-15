@@ -21,6 +21,7 @@
 #include "soundio/soundmanagerutil.h"
 #include "usbdirect/cpu_capacity.h"
 #include "usbdirect/cpu_isolation.h"
+#include "usbdirect/play_delay.h"
 #include "util/defs.h"
 #include "waveform/visualplayposition.h"
 
@@ -259,6 +260,8 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
     m_halted = false;
     m_haltNotified = false;
     m_renderInit = false;
+    m_haveLastDac = false;
+    m_expectedLatencySecs = 0.0;
     m_lastEngineUnderruns = 0;
     m_lastRenderOverruns = 0;
     m_framesSinceUsageUpdate = 0;
@@ -391,6 +394,7 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         const double latencyMs = (static_cast<double>(target) + options.startDepth * rate / 1000.0) /
                 rate * 1000.0;
         ControlObject::set(ConfigKey(kAppGroup, QStringLiteral("output_latency_ms")), latencyMs);
+        m_expectedLatencySecs = latencyMs / 1000.0;
         ControlObject::set(ConfigKey(kAppGroup, QStringLiteral("samplerate")), m_sampleRate);
         m_clkRefTimer.start();
     }
@@ -616,7 +620,9 @@ void SoundDeviceUsbDirect::render(float* pInterleaved, int frames) {
         std::fill(pInterleaved, pInterleaved + static_cast<size_t>(n) * m_frameSize, 0.0f);
         return;
     }
-    m_clkRefTimer.restart();
+    // Reference time of this block: the entry of render(). The block is not in the FIFO yet, so the delay to
+    // the DAC below is what is queued ahead of it.
+    const double sinceLastRenderSecs = m_clkRefTimer.restart().toDoubleSeconds();
 
     if (!m_renderInit.exchange(true)) {
 #if defined(__aarch64__)
@@ -648,9 +654,19 @@ void SoundDeviceUsbDirect::render(float* pInterleaved, int frames) {
     }
 
     if (m_isClkRef) {
-        const double secs = static_cast<double>(s.usbQueuedFrames + m_pOut->fifo().size()) /
-                m_sampleRate.toDouble();
-        VisualPlayPosition::setCallbackEntryToDacSecs(secs, m_clkRefTimer);
+        usbdirect::DacDelayInput in;
+        in.usbQueuedFrames = s.usbQueuedFrames;
+        in.fifoFrames = m_pOut->fifo().size();
+        in.sampleRate = m_sampleRate.toDouble();
+        in.blockFrames = static_cast<double>(n);
+        in.expectedLatencySecs = m_expectedLatencySecs;
+        in.haveLast = m_haveLastDac;
+        in.lastSecs = m_lastDacSecs;
+        in.sinceLastRenderSecs = sinceLastRenderSecs;
+        const usbdirect::DacDelay delay = usbdirect::dacDelaySecs(in);
+        m_lastDacSecs = delay.secs;
+        m_haveLastDac = true;
+        VisualPlayPosition::setCallbackEntryToDacSecs(delay.secs, m_clkRefTimer);
     }
     if (s.engineUnderruns != m_lastEngineUnderruns) {
         m_lastEngineUnderruns = s.engineUnderruns;

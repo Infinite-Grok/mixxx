@@ -1,5 +1,8 @@
 #include "waveform/visualplayposition.h"
 
+#include <atomic>
+#include <chrono>
+
 #include "moc_visualplayposition.cpp"
 #include "util/cmdlineargs.h"
 #include "util/math.h"
@@ -9,6 +12,36 @@
 QMap<QString, QWeakPointer<VisualPlayPosition>> VisualPlayPosition::m_listVisualPlayPosition;
 PerformanceTimer VisualPlayPosition::m_timeInfoTime;
 double VisualPlayPosition::m_dCallbackEntryToDacSecs = 0;
+
+namespace {
+
+// At most one warning line per 10 s for all decks and devices; the next line reports how many were suppressed.
+class RateLimitedLog {
+  public:
+    bool allow(unsigned* pSuppressed) {
+        const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                                      .count();
+        int64_t next = m_nextMs.load(std::memory_order_relaxed);
+        if (nowMs >= next &&
+                m_nextMs.compare_exchange_strong(next, nowMs + kIntervalMs)) {
+            *pSuppressed = m_suppressed.exchange(0);
+            return true;
+        }
+        m_suppressed.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+
+  private:
+    static constexpr int64_t kIntervalMs = 10000;
+    std::atomic<int64_t> m_nextMs{0};
+    std::atomic<unsigned> m_suppressed{0};
+};
+
+RateLimitedLog s_outdatedLog;
+RateLimitedLog s_noTransportLog;
+
+} // namespace
 
 VisualPlayPosition::VisualPlayPosition(const QString& key)
         : m_key{key},
@@ -77,8 +110,12 @@ double VisualPlayPosition::calcOffsetAtNextVSync(
         if (offsetMicros < minOffsetMicros) {
             offsetMicros = minOffsetMicros;
             if (!m_noTransport) {
-                qWarning() << "VisualPlayPosition::calcOffsetAtNextVSync"
-                           << m_key << "outdated position request (offset < minOffset)";
+                unsigned suppressed = 0;
+                if (s_outdatedLog.allow(&suppressed)) {
+                    qWarning() << "VisualPlayPosition::calcOffsetAtNextVSync"
+                               << m_key << "outdated position request (offset < minOffset),"
+                               << suppressed << "similar warnings suppressed";
+                }
                 qDebug() << m_key << "refToVSync:" << refToVSync
                          << "data.m_callbackEntrytoDac:"
                          << data.m_callbackEntrytoDac;
@@ -87,8 +124,12 @@ double VisualPlayPosition::calcOffsetAtNextVSync(
         } else if (offsetMicros > maxOffsetMicros) {
             offsetMicros = maxOffsetMicros;
             if (!m_noTransport) {
-                qWarning() << "VisualPlayPosition::calcOffsetAtNextVSync"
-                           << m_key << "no transport (offsetMicros > maxOffsetMicros)";
+                unsigned suppressed = 0;
+                if (s_noTransportLog.allow(&suppressed)) {
+                    qWarning() << "VisualPlayPosition::calcOffsetAtNextVSync"
+                               << m_key << "no transport (offsetMicros > maxOffsetMicros),"
+                               << suppressed << "similar warnings suppressed";
+                }
                 qDebug() << m_key << "refToVSync:" << refToVSync
                          << "data.m_callbackEntrytoDac:"
                          << data.m_callbackEntrytoDac;

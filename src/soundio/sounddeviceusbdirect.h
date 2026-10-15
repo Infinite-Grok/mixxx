@@ -111,5 +111,9 @@ class SoundDeviceUsbDirect : public SoundDevice {
     mixxx::Duration m_timeInCallback;
     int m_framesSinceUsageUpdate;
     PerformanceTimer m_clkRefTimer;
+    // VisualPlayPosition reference (I3b-2): expected output latency and the previous delay, engine thread only.
+    double m_expectedLatencySecs = 0.0;
+    double m_lastDacSecs = 0.0;
+    bool m_haveLastDac = false;
     QString m_lastError;
 };
