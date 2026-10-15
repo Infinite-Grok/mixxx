@@ -25,6 +25,11 @@ Item {
     property alias showEffects: showEffectsButton.checked
     property alias showSamplers: showSamplersButton.checked
 
+    function showDevTools() {
+        devToolsLoader.active = true;
+        devToolsLoader.item.show();
+    }
+
     // Android system Back: go back one level. Closes the topmost popup, menu
     // or dialog; inside the preferences it first returns from a sub-page to
     // the first page of the category. With nothing open, ask for confirmation
@@ -114,9 +119,9 @@ Item {
         applicationWindow: root.applicationWindow
 
         onShowDeveloperToolsRequested: {
-            devToolsWindow.show();
-            devToolsWindow.raise();
-            devToolsWindow.requestActivate();
+            root.showDevTools();
+            devToolsLoader.item.raise();
+            devToolsLoader.item.requestActivate();
         }
     }
     Skin.ApplicationMenuActions {
@@ -255,21 +260,26 @@ Item {
 
                     activeColor: Theme.white
                     checkable: true
-                    checked: devToolsWindow.visible
+                    checked: devToolsLoader.item && devToolsLoader.item.visible
                     text: "Develop"
 
                     onClicked: {
-                        if (devToolsWindow.visible)
-                            devToolsWindow.close();
+                        if (devToolsLoader.item && devToolsLoader.item.visible)
+                            devToolsLoader.item.close();
                         else
-                            devToolsWindow.show();
+                            root.showDevTools();
                     }
 
-                    DeveloperToolsWindow {
-                        id: devToolsWindow
+                    // Created on first use: its ControlModel connects to every control (~18 MB).
+                    Loader {
+                        id: devToolsLoader
 
-                        height: 480
-                        width: 640
+                        active: false
+
+                        sourceComponent: Skin.DeveloperToolsWindow {
+                            height: 480
+                            width: 640
+                        }
                     }
                 }
                 Skin.Button {
