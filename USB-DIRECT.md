@@ -50,5 +50,26 @@ channels 1-2 Main, 3-4 Headphones). Unknown devices match nothing and no USB cal
   hotplug event. A device that is open is never dropped from the list.
 - After a halt there is no automatic fallback to Oboe: audio stops until the user re-applies the sound
   configuration (or restarts). Oboe/Android audio to a replugged device may need a physical replug.
-- Not yet validated on a device (no adb in this task). Thread affinity: the pump thread inherits the
-  creating thread's CPU mask.
+- Not yet validated on a device (no adb in this task). Thread affinity: see "I3a" below.
+
+## I3a: thread placement and one-shot timer log (2026-10-15)
+
+Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` F1 (every thread created after
+start-up inherited a CPU-4 pin, a little core on the BLU B160V) and F2 (one-shot timer debug line).
+
+- `PortAudioEnumerator`: the CPU-4 pin around `Pa_Initialize()` is kept, but the calling thread's mask is
+  saved first (no pin if saving fails) and restored right after `Pa_Initialize()`. One `qInfo` line.
+- `usbdirect/cpu_capacity.h`: `bigCpus()` reads `/sys/devices/system/cpu/cpuN/cpu_capacity`: the max-capacity CPUs,
+  plus the next tier if the top tier is a single CPU. Empty (no pinning) if any file is missing/unparseable.
+- Automatic placement: with >= 2 big CPUs the USB event thread takes the highest-numbered one and the pump the
+  next; with exactly 1 (or none) neither is pinned. `EnginePump` has a new `cpuMask` ctor argument and
+  `affinityRc()` (same semantics as `Options::cpuMask`; failure is recorded, never fatal). The event thread
+  also requests an ADPF hint session.
+- Overrides under `[Android]` in the user config: `usb_direct_event_cpu_mask`, `usb_direct_pump_cpu_mask`
+  (decimal or `0x` hex, CPUs 0..7; -1 = automatic, 0 = no pinning) and `usb_direct_adpf` (default 1).
+- The masks, affinity/priority return codes and ADPF state are in the `UsbDirect` logcat stats line
+  (`eventCpuMask= pumpCpuMask= eventAffRc= pumpAffRc= prioRc= adpf= adpfState=`) and once at open.
+- `ControllerScriptInterfaceLegacy::beginTimer`: the "Starting timer" debug line is formatted only for
+  repeating timers, and for one-shot timers only with controller debug on. Manual check: run a mapping with
+  one-shot timers with and without `--controller-debug`; the log shows "Starting one-shot timer" only with it.
+

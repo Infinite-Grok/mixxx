@@ -19,6 +19,7 @@
 #include "controllers/android.h"
 #include "soundio/soundmanager.h"
 #include "soundio/soundmanagerutil.h"
+#include "usbdirect/cpu_capacity.h"
 #include "util/defs.h"
 #include "waveform/visualplayposition.h"
 
@@ -265,6 +266,49 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
     m_openerThread = std::this_thread::get_id();
 
     usbdirect::Options options; // defaults: depth 12 adaptive 4..16, nice -19 event thread
+    {
+        // Thread placement (I3a): event thread on the highest big core, pump on the next one.
+        // [Android] usb_direct_event_cpu_mask / usb_direct_pump_cpu_mask: -1 = automatic, 0 = no
+        // pinning, else a mask of CPUs 0..7 (decimal or 0x hex). usb_direct_adpf (default 1).
+        const std::vector<int> big = usbdirect::bigCpus();
+        uint32_t autoEvent = 0;
+        uint32_t autoPump = 0;
+        if (big.size() >= 2) {
+            autoEvent = usbdirect::cpuMaskOf({big[big.size() - 1]});
+            autoPump = usbdirect::cpuMaskOf({big[big.size() - 2]});
+        }
+        const auto resolve = [this](const char* key, uint32_t autoMask) {
+            const QString text = m_pConfig->getValue(
+                    ConfigKey(QStringLiteral("[Android]"), QString::fromLatin1(key)), "-1");
+            bool ok = false;
+            const qlonglong v = text.trimmed().toLongLong(&ok, 0);
+            if (!ok || v == -1) {
+                return autoMask;
+            }
+            if (v < 0 || v > 255) {
+                qWarning() << "USB Direct: ignoring invalid" << key << text;
+                return autoMask;
+            }
+            return static_cast<uint32_t>(v);
+        };
+        m_eventCpuMask = resolve("usb_direct_event_cpu_mask", autoEvent);
+        m_pumpCpuMask = resolve("usb_direct_pump_cpu_mask", autoPump);
+        m_adpf = m_pConfig->getValue(
+                         ConfigKey(QStringLiteral("[Android]"), QStringLiteral("usb_direct_adpf")),
+                         1) != 0;
+        options.cpuMask = m_eventCpuMask;
+        options.adpf = m_adpf;
+        QString bigText;
+        for (int c : big) {
+            bigText += QString::number(c) + QLatin1Char(' ');
+        }
+        qInfo().noquote() << QStringLiteral(
+                "USB Direct thread placement: bigCpus=[%1] eventCpuMask=0x%2 pumpCpuMask=0x%3 adpf=%4")
+                                     .arg(bigText.trimmed())
+                                     .arg(m_eventCpuMask, 0, 16)
+                                     .arg(m_pumpCpuMask, 0, 16)
+                                     .arg(m_adpf ? 1 : 0);
+    }
     m_pOut = std::make_unique<usbdirect::UsbAudioOut>(options);
 
     std::vector<unsigned char> raw;
@@ -294,7 +338,8 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
             *m_pOut,
             [this](float* pInterleaved, int frames) { render(pInterleaved, frames); },
             block,
-            target);
+            target,
+            m_pumpCpuMask);
     // Start order: pump (wires low-water, silent prefill on this thread) then transport.
     if (!m_pPump->start()) {
         m_lastError = QStringLiteral("Engine pump could not start");
@@ -358,13 +403,15 @@ void SoundDeviceUsbDirect::logStats(const char* what) {
     }
     const usbdirect::Stats s = m_pOut->stats();
     const unsigned long long overruns = m_pPump ? m_pPump->renderOverruns() : 0;
-    char line[512];
+    char line[768];
     snprintf(line,
             sizeof(line),
             "%s t=%llds depth=%u depthChanges=%u gapExceedDepth=%llu "
             "gapHist(>1.5/2/3/4/5/8ms)=%llu/%llu/%llu/%llu/%llu/%llu gapMaxUs=%llu "
             "engineUnderruns=%llu renderOverruns=%llu errors=%llu fifoFill=%zu/%zu "
-            "usbQueuedFrames=%llu feedbackHz=%.3f halt=%s",
+            "usbQueuedFrames=%llu feedbackHz=%.3f halt=%s "
+            "eventCpuMask=0x%x pumpCpuMask=0x%x eventAffRc=%d pumpAffRc=%d prioRc=%d adpf=%d adpfState=%d "
+            "adpfReports=%llu adpfErrors=%llu",
             what,
             static_cast<long long>(m_statsElapsed.isValid() ? m_statsElapsed.elapsed() / 1000 : 0),
             s.depth,
@@ -384,7 +431,16 @@ void SoundDeviceUsbDirect::logStats(const char* what) {
             s.fifoCapacity,
             static_cast<unsigned long long>(s.usbQueuedFrames),
             s.feedbackHz,
-            usbdirect::haltName(s.reason));
+            usbdirect::haltName(s.reason),
+            static_cast<unsigned>(m_eventCpuMask),
+            static_cast<unsigned>(m_pumpCpuMask),
+            s.affinityRc,
+            m_pPump ? m_pPump->affinityRc() : 0,
+            s.priorityRc,
+            m_adpf ? 1 : 0,
+            s.adpfState,
+            static_cast<unsigned long long>(s.adpfReports),
+            static_cast<unsigned long long>(s.adpfErrors));
     __android_log_print(ANDROID_LOG_INFO, "UsbDirect", "%s", line);
     qInfo("UsbDirect %s", line);
 }

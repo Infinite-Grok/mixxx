@@ -529,12 +529,12 @@ int ControllerScriptInterfaceLegacy::beginTimer(
     m_timers[timerId] = info;
     if (timerId == 0) {
         m_pScriptEngineLegacy->logOrThrowError(QStringLiteral("Script timer could not be created"));
-    } else if (oneShot &&
-            // FIXME workaround log spam (Github issue to be created)
-            CmdlineArgs::Instance().getControllerDebug()) {
-        qCDebug(m_logger) << "Starting one-shot timer:" << timerId;
-    } else {
+    } else if (!oneShot) {
         qCDebug(m_logger) << "Starting timer:" << timerId;
+    } else if (CmdlineArgs::Instance().getControllerDebug()) {
+        // One-shot timers are started at a very high rate by some mappings: log them only
+        // with --controller-debug (and do not format the message otherwise).
+        qCDebug(m_logger) << "Starting one-shot timer:" << timerId;
     }
     return timerId;
 }

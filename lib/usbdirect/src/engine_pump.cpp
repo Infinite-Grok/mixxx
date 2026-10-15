@@ -1,5 +1,10 @@
 #include "usbdirect/engine_pump.h"
 
+#include "usbdirect/transport_core.h"
+
+#include <sched.h>
+
+#include <cerrno>
 #include <chrono>
 
 #include <sys/resource.h>
@@ -16,8 +21,13 @@ namespace {
 constexpr int kWaitMs = 5; /* wake at least this often even if no signal arrives */
 }
 
-EnginePump::EnginePump(UsbAudioOut &out, RenderFn render, unsigned framesPerBlock, size_t targetFillFrames)
-    : out_(out), render_(std::move(render)), block_(framesPerBlock ? framesPerBlock : 256), target_(targetFillFrames) {
+EnginePump::EnginePump(UsbAudioOut &out, RenderFn render, unsigned framesPerBlock, size_t targetFillFrames,
+                       uint32_t cpuMask)
+    : out_(out),
+      render_(std::move(render)),
+      block_(framesPerBlock ? framesPerBlock : 256),
+      target_(targetFillFrames),
+      cpuMask_(cpuMask) {
 #ifdef USBDIRECT_USE_EVENTFD
     efd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 #endif
@@ -106,6 +116,19 @@ void EnginePump::threadMain() {
     threadId_.store(std::this_thread::get_id());
 #ifdef __ANDROID__
     setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), -19); /* URGENT_AUDIO, same approach as the event thread */
+#endif
+#ifdef __linux__
+    if (cpuMask_) {
+        if (!t7_affinity_valid((long long)cpuMask_)) {
+            affinityRc_.store(-1);
+        } else {
+            cpu_set_t set;
+            CPU_ZERO(&set);
+            for (int i = 0; i < 8; i++)
+                if (t7_mask_has_cpu(cpuMask_, i)) CPU_SET(i, &set);
+            affinityRc_.store(sched_setaffinity(0, sizeof(set), &set) == 0 ? 0 : errno);
+        }
+    }
 #endif
     while (!quit_.load(std::memory_order_relaxed)) {
         waitForSignal();

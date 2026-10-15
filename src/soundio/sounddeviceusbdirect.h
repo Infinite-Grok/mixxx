@@ -76,6 +76,11 @@ class SoundDeviceUsbDirect : public SoundDevice {
     std::unique_ptr<usbdirect::UsbAudioOut> m_pOut;
     std::unique_ptr<usbdirect::EnginePump> m_pPump;
 
+    // CPU masks (CPUs 0..7, 0 = none) and ADPF flag applied to the event and pump threads at open().
+    uint32_t m_eventCpuMask = 0;
+    uint32_t m_pumpCpuMask = 0;
+    bool m_adpf = false;
+
     std::atomic<bool> m_open{false};
     // Bumped on every open(); queued halt notifications from an earlier session are ignored.
     std::atomic<unsigned> m_generation{0};

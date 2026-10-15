@@ -33,7 +33,10 @@ public:
     /* render(interleaved, frames): fill `frames` frames of format().channels interleaved floats. */
     using RenderFn = std::function<void(float *interleaved, int frames)>;
 
-    EnginePump(UsbAudioOut &out, RenderFn render, unsigned framesPerBlock, size_t targetFillFrames);
+    /* cpuMask: same semantics as Options::cpuMask (0 = no request, else bitmask of CPUs 0..7 for the engine
+     * thread; a failure is recorded in affinityRc(), never fatal). */
+    EnginePump(UsbAudioOut &out, RenderFn render, unsigned framesPerBlock, size_t targetFillFrames,
+               uint32_t cpuMask = 0);
     ~EnginePump();
     EnginePump(const EnginePump &) = delete;
     EnginePump &operator=(const EnginePump &) = delete;
@@ -50,6 +53,10 @@ public:
     /* Blocks whose render() took longer than the block duration. */
     uint64_t renderOverruns() const { return overruns_.load(std::memory_order_relaxed); }
     uint64_t blocksRendered() const { return blocks_.load(std::memory_order_relaxed); }
+    /* Result of the engine thread's affinity request: 0 = ok or none requested, -1 = invalid mask, else
+     * errno. Meaningful once the thread has started. */
+    int affinityRc() const { return affinityRc_.load(std::memory_order_relaxed); }
+    uint32_t cpuMask() const { return cpuMask_; }
 
 private:
     static void lowWaterThunk(void *self);
@@ -62,6 +69,8 @@ private:
     RenderFn render_;
     unsigned block_;
     size_t target_;
+    uint32_t cpuMask_;
+    std::atomic<int> affinityRc_{0};
     std::vector<float> buf_; /* preallocated: block_ * channels */
     std::atomic<bool> quit_{false}, running_{false};
     std::atomic<uint64_t> overruns_{0}, blocks_{0};

@@ -6,6 +6,10 @@
 #include <thread>
 #include <vector>
 
+#include <sched.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
 #include "check.h"
 #include "fake_libusb.h"
 #include "usbdirect/device_profile.h"
@@ -197,7 +201,89 @@ static void testStopFromRenderIsSafe() {
     r.dev->stop();
 }
 
+/* Affinity of the engine thread: records the affinity of the thread each render() runs on. */
+struct AffinityProbe {
+    Renderer base{256};
+    std::atomic<int> otherThreadCalls{0};
+    std::atomic<unsigned> otherMask{0};
+    std::thread::id main = std::this_thread::get_id();
+    void operator()(float *b, int n) {
+        base(b, n);
+        if (std::this_thread::get_id() == main) return;
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        if (sched_getaffinity(0, sizeof(set), &set) != 0) return;
+        unsigned m = 0;
+        for (int i = 0; i < 8; i++)
+            if (CPU_ISSET(i, &set)) m |= 1u << i;
+        otherMask.store(m);
+        otherThreadCalls.fetch_add(1);
+    }
+};
+
+static bool runAffinity(uint32_t mask, AffinityProbe &pr, int *rcOut) {
+    Rig r;
+    r.open();
+    EnginePump p(*r.dev, std::ref(pr), 256, 2048, mask);
+    CHECK(p.start());
+    CHECK(r.dev->start());
+    r.verify(true);
+    for (int i = 0; i < 300 && pr.otherThreadCalls.load() == 0; i++) r.tick(false);
+    *rcOut = p.affinityRc();
+    const bool ran = pr.otherThreadCalls.load() > 0;
+    r.dev->stop();
+    p.stop();
+    return ran;
+}
+
+static void testPumpAffinity() {
+    cpu_set_t orig;
+    CPU_ZERO(&orig);
+    CHECK(sched_getaffinity(0, sizeof(orig), &orig) == 0);
+    unsigned origMask = 0;
+    for (int i = 0; i < 8; i++)
+        if (CPU_ISSET(i, &orig)) origMask |= 1u << i;
+    CHECK(origMask != 0);
+    {   /* mask 0: no request, thread keeps the inherited affinity */
+        AffinityProbe pr;
+        int rc = -99;
+        CHECK(runAffinity(0, pr, &rc));
+        CHECK(rc == 0 && pr.otherMask.load() == origMask);
+    }
+    {   /* invalid mask: refused, logged via rc, not fatal, affinity unchanged */
+        AffinityProbe pr;
+        int rc = -99;
+        CHECK(runAffinity(0x1ff, pr, &rc));
+        CHECK(rc == -1 && pr.otherMask.load() == origMask);
+    }
+    {   /* one allowed CPU: the engine thread (and only it) is restricted to it */
+        int cpu = -1;
+        for (int i = 0; i < 8 && cpu < 0; i++)
+            if (origMask & (1u << i)) cpu = i;
+        AffinityProbe pr;
+        int rc = -99;
+        CHECK(runAffinity(1u << cpu, pr, &rc));
+        CHECK(rc == 0 && pr.otherMask.load() == (1u << cpu));
+        cpu_set_t now;
+        CPU_ZERO(&now);
+        CHECK(sched_getaffinity(0, sizeof(now), &now) == 0);
+        CHECK(CPU_EQUAL(&now, &orig)); /* the caller's affinity was not touched */
+    }
+    {   /* a CPU outside the allowed set: failure is reported, thread keeps running */
+        unsigned missing = 0;
+        for (int i = 0; i < 8; i++)
+            if (!(origMask & (1u << i))) { missing = 1u << i; break; }
+        if (missing) {
+            AffinityProbe pr;
+            int rc = -99;
+            CHECK(runAffinity(missing, pr, &rc));
+            CHECK(rc != 0 && rc != -1);
+        }
+    }
+}
+
 int main() {
+    testPumpAffinity();
     testRefusals();
     testFillAndData();
     testSlowRenderOverruns();

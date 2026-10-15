@@ -186,23 +186,52 @@ void PortAudioEnumerator::initialize() {
     // A4 latency experiment: request two device bursts instead of four.
     PaOboe_SetNumberOfBuffers(2);
 
-    // The following snippets pins the audio thread to a performance core
+    // The following snippets pins the calling thread to CPU 4 while PortAudio initialises.
+    // The mask is restored right after Pa_Initialize(): affinity is inherited by every thread
+    // created later (USB Direct pump and event threads, analyzers, ...), and CPU 4 is a little
+    // core on some devices (BLU B160V).
     int32_t thread32 = gettid();
     uint mask = 0b10000;
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (uint32_t i = 0; i < 32; ++i) {
-        if ((mask >> i) & 1) {
-            CPU_SET(i, &cpuset);
-        }
-    }
-    if (sched_setaffinity(thread32, sizeof(cpu_set_t), &cpuset) != 0) {
-        __android_log_print(ANDROID_LOG_WARN, "mixxx", "Error setting CPU affinity: %d", errno);
+    cpu_set_t savedAffinity;
+    CPU_ZERO(&savedAffinity);
+    bool affinitySaved = sched_getaffinity(thread32, sizeof(cpu_set_t), &savedAffinity) == 0;
+    bool affinityPinned = false;
+    if (!affinitySaved) {
+        qInfo() << "CPU affinity: could not save the calling thread's mask (errno" << errno
+                << "), not pinning";
     } else {
-        __android_log_print(ANDROID_LOG_VERBOSE, "mixxx", "CPU affinity set");
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        for (uint32_t i = 0; i < 32; ++i) {
+            if ((mask >> i) & 1) {
+                CPU_SET(i, &cpuset);
+            }
+        }
+        if (sched_setaffinity(thread32, sizeof(cpu_set_t), &cpuset) != 0) {
+            __android_log_print(
+                    ANDROID_LOG_WARN, "mixxx", "Error setting CPU affinity: %d", errno);
+        } else {
+            affinityPinned = true;
+            __android_log_print(ANDROID_LOG_VERBOSE, "mixxx", "CPU affinity set");
+        }
     }
 #endif
     err = Pa_Initialize();
+#ifdef __ANDROID__
+    if (affinityPinned) {
+        const bool restored =
+                sched_setaffinity(thread32, sizeof(cpu_set_t), &savedAffinity) == 0;
+        const int restoreErrno = errno;
+        qInfo() << "CPU affinity: pinned to mask" << Qt::hex << mask << "during Pa_Initialize, saved mask"
+                << static_cast<qulonglong>(CPU_COUNT(&savedAffinity)) << "CPUs, restored:" << restored;
+        if (!restored) {
+            __android_log_print(ANDROID_LOG_WARN,
+                    "mixxx",
+                    "Error restoring CPU affinity: %d",
+                    restoreErrno);
+        }
+    }
+#endif
     m_initialized = true;
 
     if (err != paNoError) {
