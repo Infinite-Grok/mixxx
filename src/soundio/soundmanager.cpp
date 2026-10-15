@@ -32,6 +32,7 @@
 #endif
 
 #ifdef Q_OS_ANDROID
+#include "controllers/androidusbpermission.h"
 #include "usbdirect/device_profile.h"
 #endif
 
@@ -103,9 +104,34 @@ SoundManager::SoundManager(
     // previously configured devices were not found.
     // Write new config after MixxxMainWindow::noOutputDlg where the user has
     // a chance to keep the previous sound config (exit).
+
+#ifdef Q_OS_ANDROID
+    // A USB permission granted after the first setup attempt (the dialog was answered late) must not leave USB
+    // Direct silent until the next start. Called on the Android UI thread; the work is queued to this thread.
+    mixxx::android::setUsbPermissionListener(
+            [this](int vendorId, int productId, bool granted) {
+                if (!granted) {
+                    return;
+                }
+                size_t count = 0;
+                const usbdirect::DeviceProfile* profiles = usbdirect::profiles(&count);
+                for (size_t i = 0; i < count; i++) {
+                    if (profiles[i].vendorId == vendorId && profiles[i].productId == productId) {
+                        QMetaObject::invokeMethod(
+                                this,
+                                [this]() { reapplyAfterUsbPermission(); },
+                                Qt::QueuedConnection);
+                        return;
+                    }
+                }
+            });
+#endif
 }
 
 SoundManager::~SoundManager() {
+#ifdef Q_OS_ANDROID
+    mixxx::android::setUsbPermissionListener({});
+#endif
     // Clean up devices.
     const bool sleepAfterClosing = false;
     clearDeviceList(sleepAfterClosing);
@@ -311,6 +337,16 @@ SoundDeviceStatus SoundManager::setupDevices() {
     // pushBuffer and onDeviceOutputCallback until closeDevices() below.
 
     qDebug() << "SoundManager::setupDevices()";
+    struct SetupGuard {
+        bool& flag;
+        explicit SetupGuard(bool& f)
+                : flag(f) {
+            flag = true;
+        }
+        ~SetupGuard() {
+            flag = false;
+        }
+    } setupGuard(m_setupInProgress);
 #ifdef Q_OS_ANDROID
     // USB Direct has no usable routing UI in the preview: when it is the
     // active API and nothing is routed, apply the role-based defaults
@@ -786,6 +822,28 @@ void SoundManager::deviceFailed(const SoundDevice* pFailed) {
         }
     }
     completeDevicesClosing();
+}
+#endif
+
+#ifdef Q_OS_ANDROID
+void SoundManager::reapplyAfterUsbPermission() {
+    if (m_config.getAPI() != SoundManagerConfig::kAPIUsbDirect) {
+        return;
+    }
+    if (m_setupInProgress) {
+        qInfo() << "USB permission granted while the sound setup is running, not reapplying";
+        return;
+    }
+    for (const auto& pDevice : m_pEnumerator->queryDevices()) {
+        if (pDevice->isOpen()) {
+            return; // audio is already running (the permission wait in open() succeeded)
+        }
+    }
+    qInfo() << "USB permission granted, reapplying the sound configuration";
+    // The device list is unchanged by a permission grant and nothing is open, so there is nothing to close
+    // (clearAndQueryDevices() would sleep 5 s if any device were open); only the open step has to be redone.
+    const SoundDeviceStatus status = setupDevices();
+    qInfo() << "Sound setup after USB permission:" << static_cast<int>(status);
 }
 #endif
 

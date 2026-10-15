@@ -96,3 +96,11 @@ Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4).
    otherwise the previous value, advanced by one block minus the time since the previous render, is used (the
    PortAudio fallback idea). `VisualPlayPosition` logs the "outdated position request" and "no transport" warnings at
    most once per 10 s per kind for all devices, with the number of suppressed warnings.
+3. **Reapply after the USB permission grant.** `controllers/androidusbpermission.h` adds one listener that
+   `usbDeviceAccessResult` (Android UI thread) calls with the device's vendor/product id. `SoundManager` registers it:
+   on a grant for a USB Direct profile device it queues `reapplyAfterUsbPermission()` to the main thread. That calls
+   `setupDevices()` once, only if the configured API is USB Direct, no sound device is open and no setup is running
+   (`m_setupInProgress`, set by a guard in `setupDevices()`); nothing happens on denial. `setupDevices()` alone is used
+   instead of `clearAndQueryDevices()` + `setupDevices()` or `setConfig()`: a grant does not change the device list, and
+   `clearAndQueryDevices()` closes devices and sleeps 5 s on the main thread if any is open, while `setConfig()` also
+   runs `checkConfig()` and rewrites the config file. The 3 s permission poll in `open()` stays as the fast path.

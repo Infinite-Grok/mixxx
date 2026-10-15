@@ -118,6 +118,9 @@ class SoundManager : public QObject {
 #ifdef Q_OS_ANDROID
     /// Main thread only: a running device (USB Direct) stopped by itself.
     void deviceFailed(const SoundDevice* pFailed);
+    /// Main thread only: a USB permission was granted for a USB Direct profile device. Reapplies the sound
+    /// configuration once if USB Direct is the configured API and no sound device is open.
+    void reapplyAfterUsbPermission();
 #endif
     /// Android: route Main (ch 1-2) and Headphones (ch 3-4) on the first
     /// output with at least four channels when no config exists yet.
@@ -210,6 +213,7 @@ class SoundManager : public QObject {
 
     SoundManagerConfig m_config;
     SoundDevicePointer m_pErrorDevice;
+    bool m_setupInProgress = false;
     QHash<AudioOutput, AudioSource*> m_registeredSources;
     QMultiHash<AudioInput, AudioDestination*> m_registeredDestinations;
     ControlObject* m_pControlObjectSoundStatusCO;

@@ -1,5 +1,7 @@
 #include "android.h"
 
+#include "controllers/androidusbpermission.h"
+
 #include <android/api-level.h>
 #include <android/log.h>
 #include <qjnitypes.h>
@@ -14,6 +16,16 @@ std::condition_variable s_grantingWaitCond = {};
 std::vector<std::pair<QJniObject, bool>> s_grantingResult = {};
 QJniObject s_intent = {};
 QJniObject s_usbManager = {};
+
+namespace {
+std::mutex s_listenerLock;
+UsbPermissionListener s_listener;
+} // namespace
+
+void setUsbPermissionListener(UsbPermissionListener listener) {
+    std::lock_guard lock(s_listenerLock);
+    s_listener = std::move(listener);
+}
 
 const QJniObject& getIntent() {
     __android_log_print(ANDROID_LOG_VERBOSE, "mixxx", "about to get intent");
@@ -109,6 +121,14 @@ void usbDeviceAccessResult(QJniObject device, bool granted) {
     s_grantingResult.push_back(std::make_pair<>(device, granted));
     s_grantingWaitCond.notify_one();
     // FIXME Handle large list?
+    lock.unlock();
+
+    std::lock_guard listenerLock(s_listenerLock);
+    if (s_listener && device.isValid()) {
+        const int vendorId = device.callMethod<jint>("getVendorId");
+        const int productId = device.callMethod<jint>("getProductId");
+        s_listener(vendorId, productId, granted);
+    }
 }
 } // namespace android
 } // namespace mixxx
