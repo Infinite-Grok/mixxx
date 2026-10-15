@@ -19,7 +19,8 @@ Item {
     property alias maximizeLibrary: maximizeLibraryButton.checked
     readonly property int numDecks: 4
     readonly property int numPreviewDecks: 1
-    readonly property int numSamplers: 16
+    // Android: 8 samplers (the T7 mapping raises [App] num_samplers on demand); saves ~40 MB of CachingReader pools.
+    readonly property int numSamplers: Qt.platform.os === "android" ? 8 : 16
     readonly property int waveformOverviewTypeRgb: 2
     readonly property bool show4decks: show4DecksButton.checked && show4DecksButton.visible
     property alias showEffects: showEffectsButton.checked
