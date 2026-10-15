@@ -129,3 +129,6 @@ Isolation now leaves cpu0 (where the xHCI interrupt fires) to the interrupt path
 
 ## I3e: audio threads share the whole big-core set (2026-10-16)
 Automatic event and pump masks are now both the whole big-core set (when it has at least 2 CPUs; with 1 big CPU nothing is pinned). Single-core pins made the threads wait behind kswapd/kcompactd/GC that EAS moves onto the big cores under isolation. The isolation audio mask is still the union of the two applied masks (= the big set), so other threads stay off it; cpu0 rule unchanged. Explicit ini values (usb_direct_event_cpu_mask / usb_direct_pump_cpu_mask) behave as before, so single-core pins stay available for A/B. The start log line prints the masks as applied.
+
+## I4
+versionName 0.1.0-usbdirect.7: 8 samplers on Android, Developer tools window created on demand. No lib/usbdirect change.
