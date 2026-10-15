@@ -298,6 +298,35 @@ void QmlWaveformDisplay::markWindowDirty(const char* reason) {
     m_dirtyFlag.setFlag(DirtyFlag::Window, true);
 }
 
+void QmlWaveformDisplay::noteNodeReason(const char* reason) {
+    // I6d: every event that can make Qt drop our paint node is counted as [ChannelN]/node:<reason>.
+    MarkImageStats::Scope statsScope(getGroup() + QStringLiteral("/node:") + QLatin1String(reason));
+    MarkImageStats::noteCause(MarkImageStats::Other);
+}
+
+void QmlWaveformDisplay::releaseResources() {
+    // Called by Qt from QQuickItemPrivate::derefWindow() right before it forgets the paint node.
+    noteNodeReason("release-resources");
+    QQuickItem::releaseResources();
+}
+
+void QmlWaveformDisplay::itemChange(QQuickItem::ItemChange change, const QQuickItem::ItemChangeData& value) {
+    switch (change) {
+    case QQuickItem::ItemSceneChange:
+        noteNodeReason(value.window ? "scene-in" : "scene-out");
+        break;
+    case QQuickItem::ItemVisibleHasChanged:
+        noteNodeReason(value.boolValue ? "visible" : "hidden");
+        break;
+    case QQuickItem::ItemParentHasChanged:
+        noteNodeReason("parent");
+        break;
+    default:
+        break;
+    }
+    QQuickItem::itemChange(change, value);
+}
+
 void QmlWaveformDisplay::slotWindowChanged(QQuickWindow* window) {
     markWindowDirty("window-changed");
     if (window) {
@@ -439,23 +468,32 @@ QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*
     if (m_dirtyFlag.testFlag(DirtyFlag::Window)) {
         delete node;
         node = nullptr;
+        m_pClipNode = nullptr;
+        m_pBgNode = nullptr;
         m_dirtyFlag.setFlag(DirtyFlag::Window, false);
     }
 
-    DEBUG_ASSERT(!node || node->childCount() == 1);
-
-    auto* pClipNode = dynamic_cast<QSGClipNode*>(node);
-    auto* pBgNode = pClipNode ? dynamic_cast<QSGSimpleRectNode*>(pClipNode->lastChild()) : nullptr;
+    // Identify our own root by pointer, not by dynamic_cast on its children: the node must persist across
+    // frames and an idle or normal frame returns it unchanged (I6d).
+    QSGClipNode* pClipNode = nullptr;
+    QSGSimpleRectNode* pBgNode = nullptr;
+    if (node && node == m_pClipNode && m_pBgNode) {
+        pClipNode = m_pClipNode;
+        pBgNode = m_pBgNode;
+    }
 
     if (!pBgNode) {
         if (!windowFlagWasSet) {
-            // Qt handed us no node although nothing asked for a rebuild.
-            MarkImageStats::Scope statsScope(getGroup() + QStringLiteral("/dirty:qt-node-reset"));
-            MarkImageStats::noteCause(MarkImageStats::Other);
+            // Qt handed us no usable node although nothing asked for a rebuild.
+            noteNodeReason(node ? "foreign" : "null");
         }
-        if (pClipNode) {
-            delete pClipNode;
+        if (node) {
+            // Not ours (or inconsistent): drop it, we return a fresh root.
+            delete node;
+            node = nullptr;
         }
+        m_pClipNode = nullptr;
+        m_pBgNode = nullptr;
         pClipNode = new QSGClipNode();
         pBgNode = new QSGSimpleRectNode();
         m_dirtyFlag.setFlag(DirtyFlag::Background, true);
@@ -496,6 +534,8 @@ QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*
 
         pBgNode->appendChildNode(pTopNode);
         pClipNode->appendChildNode(pBgNode);
+        m_pClipNode = pClipNode;
+        m_pBgNode = pBgNode;
         init();
         // The track can be assigned before the scene-graph renderer stack is
         // created. Replay it after renderer initialization so marks and STEM
