@@ -138,3 +138,6 @@ versionName 0.1.0-usbdirect.8: T7 platter script CPU cut, behaviour identical (o
 
 ## I6
 allshader::WaveformRenderMark::updateMarkImage/updateEndMarkImage now clear Graphics::m_obsolete after updateTexture(); previously mark images were rasterised on every frame once flagged.
+
+## I6b
+versionName 0.1.0-usbdirect.10. Test instrumentation only: (1) `src/waveform/renderers/markimagestats.h` counts `setNeedsImageUpdate` calls by cause (breadth, level, text, color, jump, other) and real main/end image regenerations per renderer label (`[ChannelN]/main|slip|resize|cues|marks`), and logs one `MarkImageStats 10s:` qInfo line per 10 s when something was counted. (2) On Android `main()` sets `QSG_INFO=1` (Qt logs the chosen render loop) and, if `<app files dir>/qsg_render_loop` exists containing `threaded` or `basic`, sets `QSG_RENDER_LOOP` before the QGuiApplication is created; `QmlApplication` logs "Qt Quick render loop: BASIC/THREADED" from `sceneGraphInitialized`.
