@@ -230,6 +230,18 @@ static bool runAffinity(uint32_t mask, AffinityProbe &pr, int *rcOut) {
     r.verify(true);
     for (int i = 0; i < 300 && pr.otherThreadCalls.load() == 0; i++) r.tick(false);
     *rcOut = p.affinityRc();
+    {
+        int tid = 0;
+        for (int i = 0; i < 2000 && !(tid = p.threadTid()); i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        CHECK(tid > 0 && tid != (int)syscall(SYS_gettid));
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CHECK(sched_getaffinity(tid, sizeof(set), &set) == 0);
+        unsigned m = 0;
+        for (int i = 0; i < 8; i++)
+            if (CPU_ISSET(i, &set)) m |= 1u << i;
+        if (*rcOut == 0 && mask) CHECK(m == mask);
+    }
     const bool ran = pr.otherThreadCalls.load() > 0;
     r.dev->stop();
     p.stop();

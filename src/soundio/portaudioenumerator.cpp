@@ -222,7 +222,7 @@ void PortAudioEnumerator::initialize() {
         const bool restored =
                 sched_setaffinity(thread32, sizeof(cpu_set_t), &savedAffinity) == 0;
         const int restoreErrno = errno;
-        qInfo() << "CPU affinity: pinned to mask" << Qt::hex << mask << "during Pa_Initialize, saved mask"
+        qInfo() << "CPU affinity: pinned to mask" << Qt::hex << mask << Qt::dec << "during Pa_Initialize, saved mask"
                 << static_cast<qulonglong>(CPU_COUNT(&savedAffinity)) << "CPUs, restored:" << restored;
         if (!restored) {
             __android_log_print(ANDROID_LOG_WARN,

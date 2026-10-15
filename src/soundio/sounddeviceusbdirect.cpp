@@ -20,6 +20,7 @@
 #include "soundio/soundmanager.h"
 #include "soundio/soundmanagerutil.h"
 #include "usbdirect/cpu_capacity.h"
+#include "usbdirect/cpu_isolation.h"
 #include "util/defs.h"
 #include "waveform/visualplayposition.h"
 
@@ -293,6 +294,9 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         };
         m_eventCpuMask = resolve("usb_direct_event_cpu_mask", autoEvent);
         m_pumpCpuMask = resolve("usb_direct_pump_cpu_mask", autoPump);
+        m_isolateEnabled = m_pConfig->getValue(ConfigKey(QStringLiteral("[Android]"),
+                                   QStringLiteral("usb_direct_isolate")),
+                                   1) != 0;
         m_adpf = m_pConfig->getValue(
                          ConfigKey(QStringLiteral("[Android]"), QStringLiteral("usb_direct_adpf")),
                          1) != 0;
@@ -353,6 +357,7 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         teardown();
         return SoundDeviceStatus::Error;
     }
+    startIsolation();
 
     {
         // Detects a halt even when the engine is no longer rendering (FIFO full, nothing pops).
@@ -366,6 +371,7 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
                     pDevice->m_pOut) {
                 if (++pDevice->m_statsTick >= kStatsEveryTicks) {
                     pDevice->m_statsTick = 0;
+                    pDevice->isolationTick();
                     pDevice->logStats("periodic");
                 }
                 const usbdirect::Halt reason = pDevice->m_pOut->stats().reason;
@@ -411,7 +417,7 @@ void SoundDeviceUsbDirect::logStats(const char* what) {
             "engineUnderruns=%llu renderOverruns=%llu errors=%llu fifoFill=%zu/%zu "
             "usbQueuedFrames=%llu feedbackHz=%.3f halt=%s "
             "eventCpuMask=0x%x pumpCpuMask=0x%x eventAffRc=%d pumpAffRc=%d prioRc=%d adpf=%d adpfState=%d "
-            "adpfReports=%llu adpfErrors=%llu",
+            "adpfReports=%llu adpfErrors=%llu isolate=%d moved=%u failed=%u",
             what,
             static_cast<long long>(m_statsElapsed.isValid() ? m_statsElapsed.elapsed() / 1000 : 0),
             s.depth,
@@ -440,9 +446,95 @@ void SoundDeviceUsbDirect::logStats(const char* what) {
             m_adpf ? 1 : 0,
             s.adpfState,
             static_cast<unsigned long long>(s.adpfReports),
-            static_cast<unsigned long long>(s.adpfErrors));
+            static_cast<unsigned long long>(s.adpfErrors),
+            m_isoActive ? 1 : 0,
+            m_isoMoved,
+            m_isoFailed);
     __android_log_print(ANDROID_LOG_INFO, "UsbDirect", "%s", line);
     qInfo("UsbDirect %s", line);
+}
+
+void SoundDeviceUsbDirect::startIsolation() {
+    m_isoActive = false;
+    m_isoMoved = 0;
+    m_isoFailed = 0;
+    if (!m_isolateEnabled) {
+        qInfo() << "USB Direct core isolation: disabled by usb_direct_isolate=0";
+        return;
+    }
+    if (m_eventCpuMask == 0 || m_pumpCpuMask == 0) {
+        qInfo() << "USB Direct core isolation: skipped (event or pump thread not pinned)";
+        return;
+    }
+    // The event thread and the pump apply their masks on their own threads right after start(); wait briefly.
+    int eventTid = 0;
+    int pumpTid = 0;
+    for (int i = 0; i < 300; i++) {
+        eventTid = m_pOut ? m_pOut->eventThreadTid() : 0;
+        pumpTid = m_pPump ? m_pPump->threadTid() : 0;
+        if (eventTid > 0 && pumpTid > 0) {
+            break;
+        }
+        QThread::msleep(1);
+    }
+    uint64_t allowed = 0;
+    uint64_t eventActual = 0;
+    uint64_t pumpActual = 0;
+    if (eventTid <= 0 || pumpTid <= 0 || !usbdirect::threadMask(0, &allowed) ||
+            !usbdirect::threadMask(eventTid, &eventActual) ||
+            !usbdirect::threadMask(pumpTid, &pumpActual)) {
+        qInfo() << "USB Direct core isolation: skipped (thread ids or masks unavailable)";
+        return;
+    }
+    // The masks actually in force on the two threads, not the requested ones: a failed pin leaves the
+    // inherited mask, which leaves nothing to isolate.
+    const usbdirect::IsolationPlan plan = usbdirect::planIsolation(allowed, eventActual, pumpActual);
+    if (!plan.apply) {
+        qInfo().noquote() << QStringLiteral(
+                "USB Direct core isolation: skipped (allowed=0x%1 event=0x%2 pump=0x%3)")
+                                     .arg(allowed, 0, 16)
+                                     .arg(eventActual, 0, 16)
+                                     .arg(pumpActual, 0, 16);
+        return;
+    }
+    m_isoAllowedMask = allowed;
+    m_isoOtherMask = plan.otherMask;
+    m_isoEventTid = eventTid;
+    m_isoPumpTid = pumpTid;
+    m_isoActive = true;
+    if (!usbdirect::setThreadMask(0, plan.otherMask)) {
+        m_isoFailed++;
+    }
+    const usbdirect::SweepResult r = usbdirect::sweepThreads(plan.otherMask, {eventTid, pumpTid});
+    m_isoMoved = r.moved;
+    m_isoFailed += r.failed;
+    qInfo().noquote() << QStringLiteral(
+            "USB Direct core isolation: allowed=0x%1 audio=0x%2 other=0x%3 moved=%4 failed=%5")
+                                 .arg(allowed, 0, 16)
+                                 .arg(plan.audioMask, 0, 16)
+                                 .arg(plan.otherMask, 0, 16)
+                                 .arg(m_isoMoved)
+                                 .arg(m_isoFailed);
+}
+
+void SoundDeviceUsbDirect::isolationTick() {
+    if (!m_isoActive) {
+        return;
+    }
+    const usbdirect::SweepResult r = usbdirect::sweepThreads(m_isoOtherMask, {m_isoEventTid, m_isoPumpTid});
+    m_isoMoved = r.moved;
+    m_isoFailed = r.failed;
+}
+
+void SoundDeviceUsbDirect::stopIsolation() {
+    if (!m_isoActive) {
+        return;
+    }
+    m_isoActive = false;
+    // Threads created while isolated inherited the reduced mask; give everything the process mask back.
+    usbdirect::setThreadMask(0, m_isoAllowedMask);
+    const usbdirect::SweepResult r = usbdirect::sweepThreads(m_isoAllowedMask, {});
+    qInfo() << "USB Direct core isolation: restored, moved" << r.moved << "failed" << r.failed;
 }
 
 void SoundDeviceUsbDirect::teardown() {
@@ -484,6 +576,8 @@ void SoundDeviceUsbDirect::teardown() {
                 << usbdirect::haltName(s.reason);
         m_pOut.reset();
     }
+    // The pump and event threads are gone: let every other thread use all CPUs again.
+    stopIsolation();
     // 3. Only now the Java connection (its fd) may be closed.
     if (m_connection.isValid()) {
         m_connection.callMethod<void>("close");

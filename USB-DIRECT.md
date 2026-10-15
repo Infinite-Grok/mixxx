@@ -73,3 +73,18 @@ start-up inherited a CPU-4 pin, a little core on the BLU B160V) and F2 (one-shot
   repeating timers, and for one-shot timers only with controller debug on. Manual check: run a mapping with
   one-shot timers with and without `--controller-debug`; the log shows "Starting one-shot timer" only with it.
 
+
+## I3b: isolation, play position, permission reapply, idle UI, analyzers (2026-10-16)
+
+Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4). Each numbered change is its own commit.
+
+1. **Core isolation.** While a USB Direct device is open, every thread of the process except the USB event thread
+   and the engine pump is restricted to `allowed & ~(event | pump)` (the masks actually in force on the two
+   threads, read back with `sched_getaffinity`; `allowed` is the main thread's mask). Skipped when either thread is
+   not pinned or no CPU would be left. The main thread is set first (threads created later inherit it), then
+   `/proc/self/task/*` is swept (QML render thread, readers, analyzers, Binder/Oboe threads); the sweep repeats on the
+   10 s stats tick, and on close everything gets `allowed` back. `usbdirect/cpu_isolation.h` has the pure
+   arithmetic (`planIsolation`) and the sweep; `UsbAudioOut::eventThreadTid()` and `EnginePump::threadTid()`
+   give the tids to skip. Config `[Android] usb_direct_isolate` (default 1, 0 = off). The stats line gains
+   `isolate= moved= failed=`; one `core isolation:` line at open logs the masks in hex. Also: the
+   PortAudioEnumerator pin log resets to decimal after the hex mask.

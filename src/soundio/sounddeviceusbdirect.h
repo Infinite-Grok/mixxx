@@ -68,6 +68,10 @@ class SoundDeviceUsbDirect : public SoundDevice {
     // Ordered shutdown (transport, then pump, then Java connection); idempotent.
     void teardown();
     bool acquireConnection(std::vector<unsigned char>* pRaw, int* pFd);
+    // Core isolation (I3b): keeps every other thread of the process off the event/pump CPUs while open.
+    void startIsolation();
+    void isolationTick(); // 10 s stats tick: catches threads created by non-main threads
+    void stopIsolation();
 
     const usbdirect::DeviceProfile* m_pProfile;
     std::shared_ptr<Shared> m_shared;
@@ -80,6 +84,14 @@ class SoundDeviceUsbDirect : public SoundDevice {
     uint32_t m_eventCpuMask = 0;
     uint32_t m_pumpCpuMask = 0;
     bool m_adpf = false;
+    bool m_isolateEnabled = true;
+    bool m_isoActive = false;
+    uint64_t m_isoAllowedMask = 0;
+    uint64_t m_isoOtherMask = 0;
+    int m_isoEventTid = 0;
+    int m_isoPumpTid = 0;
+    unsigned m_isoMoved = 0;
+    unsigned m_isoFailed = 0;
 
     std::atomic<bool> m_open{false};
     // Bumped on every open(); queued halt notifications from an earlier session are ignored.

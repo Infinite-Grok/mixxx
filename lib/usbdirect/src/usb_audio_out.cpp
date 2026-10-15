@@ -156,6 +156,7 @@ struct UsbAudioOut::Impl {
     std::atomic<int> state{(int)State::Closed};
     std::atomic<bool> stopRequested{false};
     std::thread thread;
+    std::atomic<int> eventTid{0}; /* kernel tid of the event thread once its priority/affinity are applied */
     Halt reason = Halt::None;
     bool claimed = false, detached = false, alt1 = false, watchdog = false;
     uint64_t startNs = 0, lastOutNs = 0;
@@ -407,6 +408,7 @@ struct UsbAudioOut::Impl {
     void threadMain() {
         if (opt.setPriority) w.prioRc = (uint64_t)osSetPriority();
         w.affRc = (uint64_t)osAffinity(t7_affinity_valid((long long)opt.cpuMask) ? opt.cpuMask : 0);
+        eventTid.store((int)syscall(SYS_gettid), std::memory_order_release);
         w.adpfState = T7_ADPF_UNAVAILABLE;
         if (opt.adpf && t7_adpf_api_ok(osApiLevel())) w.adpfState = (uint64_t)osAdpfOpen(&adpf);
         while (!life.stopping) eventStepImpl();
@@ -552,6 +554,7 @@ struct UsbAudioOut::Impl {
         if (st == (int)State::Closed || st == (int)State::Stopped) return;
         stopRequested.store(true);
         if (thread.joinable()) thread.join();
+        eventTid.store(0, std::memory_order_release);
         if (st != (int)State::Open) {
             halt(Halt::UserStop);
             drain();
@@ -583,6 +586,7 @@ int UsbAudioOut::ownershipTag(int i) const { return impl_->ownership[2 * i]; }
 int UsbAudioOut::ownershipReturn(int i) const { return impl_->ownership[2 * i + 1]; }
 bool UsbAudioOut::detachedKernelDriver() const { return impl_->detachedEver || impl_->detached; }
 
+int UsbAudioOut::eventThreadTid() const { return impl_->eventTid.load(std::memory_order_acquire); }
 Stats UsbAudioOut::stats() const {
     const Raw r = impl_->readRaw();
     Stats s;

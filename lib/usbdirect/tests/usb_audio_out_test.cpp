@@ -1,6 +1,10 @@
 /* UsbAudioOut against a fake libusb (tests/fake_libusb.cpp), driven in manual mode. */
 #include <atomic>
 #include <chrono>
+#include <sched.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -490,7 +494,17 @@ static void testThreaded() {
         fake::subs.clear();
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     };
+    CHECK(r.dev->eventThreadTid() == 0); /* no thread yet */
     CHECK(r.dev->start());
+    {
+        int tid = 0;
+        for (int i = 0; i < 2000 && !(tid = r.dev->eventThreadTid()); i++)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        CHECK(tid > 0 && tid != (int)syscall(SYS_gettid));
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CHECK(sched_getaffinity(tid, sizeof(set), &set) == 0); /* a live task of this process */
+    }
     uint64_t torn = 0, last = 0;
     std::vector<float> buf(2000 * 4, 0.1f);
     for (int i = 0; i < 400; i++) {

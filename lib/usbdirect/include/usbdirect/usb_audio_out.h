@@ -90,6 +90,9 @@ public:
 
     SpscFloatFifo &fifo();
     Stats stats() const;
+    /* Kernel tid of the event thread, 0 until the thread has applied its priority/affinity (and after stop(), or
+     * when spawnThread is false). */
+    int eventThreadTid() const;
     /* Only valid before start() (Closed or Open state); returns false and changes nothing once
      * running/stopping. fn is called on the event thread (never inside a libusb callback) whenever the FIFO
      * holds fewer than `frames` frames; it must be cheap (e.g. eventfd write). stop() called from

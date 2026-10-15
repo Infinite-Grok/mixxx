@@ -57,6 +57,8 @@ public:
      * errno. Meaningful once the thread has started. */
     int affinityRc() const { return affinityRc_.load(std::memory_order_relaxed); }
     uint32_t cpuMask() const { return cpuMask_; }
+    /* Kernel tid of the engine thread, 0 until it has applied its priority/affinity (and after stop()). */
+    int threadTid() const { return tid_.load(std::memory_order_acquire); }
 
 private:
     static void lowWaterThunk(void *self);
@@ -71,6 +73,7 @@ private:
     size_t target_;
     uint32_t cpuMask_;
     std::atomic<int> affinityRc_{0};
+    std::atomic<int> tid_{0};
     std::vector<float> buf_; /* preallocated: block_ * channels */
     std::atomic<bool> quit_{false}, running_{false};
     std::atomic<uint64_t> overruns_{0}, blocks_{0};

@@ -89,6 +89,7 @@ void EnginePump::stop() {
     signal();
     if (threadId_.load() == std::this_thread::get_id()) return; /* from render: request only, no self-join */
     if (thread_.joinable()) thread_.join();
+    tid_.store(0, std::memory_order_release);
     running_.store(false);
     out_.setLowWaterCallback(nullptr, nullptr, 0); /* refused once the transport runs; harmless then */
 }
@@ -130,6 +131,7 @@ void EnginePump::threadMain() {
         }
     }
 #endif
+    tid_.store((int)syscall(SYS_gettid), std::memory_order_release);
     while (!quit_.load(std::memory_order_relaxed)) {
         waitForSignal();
         fillToTarget();
