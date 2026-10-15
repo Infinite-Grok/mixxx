@@ -4,6 +4,8 @@
 #include <QObject>
 #include <QUrl>
 #include <QVariant>
+#include <memory>
+#include <vector>
 
 #include "analyzer/trackanalysisscheduler.h"
 #include "library/libraryfeature.h"
@@ -12,6 +14,7 @@
 #include "util/parented_ptr.h"
 
 class DlgAnalysis;
+class ControlProxy;
 
 class AnalysisFeature : public LibraryFeature {
     Q_OBJECT
@@ -47,8 +50,12 @@ class AnalysisFeature : public LibraryFeature {
   private slots:
     void onTrackAnalysisSchedulerProgress(AnalyzerProgress currentTrackProgress, int currentTrackNumber, int totalTracksCount);
     void onTrackAnalysisSchedulerFinished();
+    void slotDeckPlayChanged();
 
   private:
+    bool anyDeckPlaying() const;
+    // Android: batch analysis competes with the audio engine for the CPU, so it waits while a deck plays.
+    bool deferWhilePlaying() const;
     // Sets the title of this feature to the default name, given by
     // m_sAnalysisTitleName
     void resetTitle();
@@ -67,4 +74,7 @@ class AnalysisFeature : public LibraryFeature {
 
     // The title is dynamic and reflects the current progress
     QString m_title;
+
+    std::vector<std::unique_ptr<ControlProxy>> m_deckPlayProxies;
+    bool m_deferred = false; // the scheduler is suspended because a deck is playing
 };

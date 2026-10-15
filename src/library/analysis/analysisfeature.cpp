@@ -4,10 +4,12 @@
 #include <QtDebug>
 
 #include "analyzer/analyzerscheduledtrack.h"
+#include "control/controlproxy.h"
 #include "controllers/keyboard/keyboardeventfilter.h"
 #include "library/analysis/dlganalysis.h"
 #include "library/library.h"
 #include "library/trackcollectionmanager.h"
+#include "mixer/playermanager.h"
 #include "moc_analysisfeature.cpp"
 #include "sources/soundsourceproxy.h"
 #include "util/dnd.h"
@@ -176,10 +178,65 @@ void AnalysisFeature::analyzeTracks(const QList<AnalyzerScheduledTrack>& tracks)
                 this,
                 &AnalysisFeature::trackProgress);
 
+        m_deferred = false;
+        m_deckPlayProxies.clear();
+        if (deferWhilePlaying()) {
+            ControlProxy numDecks(ConfigKey(QStringLiteral("[App]"), QStringLiteral("num_decks")));
+            for (int i = 0; i < static_cast<int>(numDecks.get()); i++) {
+                auto pPlay = std::make_unique<ControlProxy>(
+                        PlayerManager::groupForDeck(i), QStringLiteral("play"), this);
+                pPlay->connectValueChanged(this, &AnalysisFeature::slotDeckPlayChanged);
+                m_deckPlayProxies.push_back(std::move(pPlay));
+            }
+        }
+
         emit analysisActive(true);
     }
 
     if (m_pTrackAnalysisScheduler->scheduleTracks(tracks) > 0) {
+        if (deferWhilePlaying() && anyDeckPlaying()) {
+            // The workers start suspended; slotDeckPlayChanged() resumes them when all decks have stopped.
+            kLogger.info() << "Analysis deferred while a deck is playing";
+            m_deferred = true;
+        } else {
+            m_deferred = false;
+            resumeAnalysis();
+        }
+    }
+}
+
+bool AnalysisFeature::deferWhilePlaying() const {
+#ifdef Q_OS_ANDROID
+    return m_pConfig->getValue(
+                   ConfigKey(QStringLiteral("[Android]"),
+                           QStringLiteral("defer_analysis_while_playing")),
+                   1) != 0;
+#else
+    return false;
+#endif
+}
+
+bool AnalysisFeature::anyDeckPlaying() const {
+    for (const auto& pPlay : m_deckPlayProxies) {
+        if (pPlay->toBool()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void AnalysisFeature::slotDeckPlayChanged() {
+    if (!m_pTrackAnalysisScheduler) {
+        return;
+    }
+    const bool playing = anyDeckPlaying();
+    if (playing && !m_deferred) {
+        kLogger.info() << "Deferring analysis while a deck is playing";
+        m_deferred = true;
+        suspendAnalysis();
+    } else if (!playing && m_deferred) {
+        kLogger.info() << "All decks stopped, resuming analysis";
+        m_deferred = false;
         resumeAnalysis();
     }
 }
@@ -196,6 +253,11 @@ void AnalysisFeature::resumeAnalysis() {
     if (!m_pTrackAnalysisScheduler) {
         return; // inactive
     }
+    if (m_deferred) {
+        // E.g. the load-time analysis of a deck went idle (Library::onPlayerManagerTrackAnalyzerIdle) while another
+        // deck is playing: stay suspended until slotDeckPlayChanged() sees every deck stopped.
+        return;
+    }
     kLogger.info() << "Resuming analysis";
     m_pTrackAnalysisScheduler->resume();
 }
@@ -205,6 +267,7 @@ void AnalysisFeature::stopAnalysis() {
         return; // inactive
     }
     kLogger.info() << "Stopping analysis";
+    m_deferred = false;
     m_pTrackAnalysisScheduler->stop();
 }
 
@@ -237,6 +300,8 @@ void AnalysisFeature::onTrackAnalysisSchedulerFinished() {
         // for creating the queue with its worker threads are acceptable.
         m_pTrackAnalysisScheduler.reset();
     }
+    m_deferred = false;
+    m_deckPlayProxies.clear();
     resetTitle();
     emit analysisActive(false);
 }

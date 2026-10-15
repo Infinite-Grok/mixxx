@@ -2,6 +2,12 @@
 
 #include "moc_workerthread.cpp"
 
+#ifdef Q_OS_ANDROID
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 namespace {
 
 // Enable trace logging only temporary for debugging purposes
@@ -65,6 +71,28 @@ void WorkerThread::run() {
     if (m_priority != QThread::InheritPriority) {
         m_logger.debug() << "Set priority to: " << m_priority;
         setPriority(m_priority);
+#ifdef Q_OS_ANDROID
+        // Qt ignores QThread::Priority for SCHED_OTHER threads on Android, so a "low priority" worker (batch
+        // analysis) would compete with the audio and UI threads at nice 0.
+        int niceValue = 0;
+        switch (m_priority) {
+        case QThread::LowPriority:
+            niceValue = 10;
+            break;
+        case QThread::LowestPriority:
+            niceValue = 15;
+            break;
+        case QThread::IdlePriority:
+            niceValue = 19;
+            break;
+        default:
+            break;
+        }
+        if (niceValue != 0 &&
+                setpriority(PRIO_PROCESS, static_cast<id_t>(syscall(SYS_gettid)), niceValue) != 0) {
+            m_logger.warning() << "Failed to set the nice value" << niceValue;
+        }
+#endif
     }
 
     m_logger.debug() << "Running";

@@ -113,3 +113,10 @@ Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4).
    analysis progress have no `update()` hook while paused. After an idle period the frame-time references are reset
    so the first frame does not trigger the position warnings. This applies on desktop too (the QML waveform item is
    shared). `[Waveform] FrameRate` defaults to 30 on Android when the key is absent (an explicit value wins).
+5. **Analyzer priority and deferral.** On Android `WorkerThread::run()` also sets the nice value of workers with
+   Low/Lowest/Idle priority to 10/15/19 (Qt's `QThread::setPriority` has no effect on `SCHED_OTHER` threads there); in
+   practice this is the batch analysis (`AnalysisFeature` scheduler, `LowPriority`), not the load-time analysis of
+   `PlayerManager`. `AnalysisFeature` watches `[ChannelN],play` for every deck (the count read when the scheduler is
+   created) and `suspend()`s the batch scheduler while any deck plays; it `resume()`s it when all stopped.
+   `resumeAnalysis()` (also called by `Library` when the load-time analysis goes idle) is a no-op while deferred.
+   Config `[Android] defer_analysis_while_playing` (default 1, 0 = off).
