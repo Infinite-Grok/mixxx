@@ -93,13 +93,24 @@ DJCiT7Platter.DETECT_ALPHA = 0.1;
 DJCiT7Platter.connections = [];
 DJCiT7Platter.decks = {1: {lastPos: null}, 2: {lastPos: null}};
 
+// Per-message lookup tables: the platter sends thousands of messages per second per deck, so
+// group names and deck numbers come from constants instead of template strings and a regex.
+DJCiT7Platter.GROUPS = {1: "[Channel1]", 2: "[Channel2]"};
+DJCiT7Platter.DECK_OF_GROUP = Object.create(null);
+DJCiT7Platter.DECK_OF_GROUP["[Channel1]"] = 1;
+DJCiT7Platter.DECK_OF_GROUP["[Channel2]"] = 2;
+// Cached track_loaded per deck, kept current by a connection made in init.
+DJCiT7Platter.loaded = {1: false, 2: false};
+// Scratch result of pbPlace, reused for every message (consumed before the next call).
+DJCiT7Platter.placeScratch = {u: 0, q: 0, reanchor: false};
+
 /**
  * Name of the Mixxx group of a deck.
  * @param {number} deck Deck number, 1 or 2.
  * @returns {string} The group name, for example "[Channel1]".
  */
 DJCiT7Platter.group = function(deck) {
-    return `[Channel${deck}]`;
+    return DJCiT7Platter.GROUPS[deck];
 };
 
 /**
@@ -108,8 +119,8 @@ DJCiT7Platter.group = function(deck) {
  * @returns {?number} 1 or 2, or null for any other group.
  */
 DJCiT7Platter.deckFromGroup = function(group) {
-    const m = (/^\[Channel([12])\]$/).exec(group);
-    return m ? Number(m[1]) : null;
+    const d = DJCiT7Platter.DECK_OF_GROUP[group];
+    return d === undefined ? null : d;
 };
 
 /**
@@ -191,6 +202,7 @@ DJCiT7Platter.pbForward = function(last, now, elapsedMs) {
  * @param {number} pbNow Timestamp of the edge, 0 to 16383.
  * @param {number} nowMs Host time of arrival in ms.
  * @returns {object} The placement: u (device count), q (delivery delay above the envelope), reanchor.
+ *   The object is shared and overwritten by the next call.
  */
 DJCiT7Platter.pbPlace = function(s, pbNow, nowMs) {
     const perMs = DJCiT7Platter.PB_HZ / 1000;
@@ -215,7 +227,11 @@ DJCiT7Platter.pbPlace = function(s, pbNow, nowMs) {
         u = s.pbU + (d === 0 ? DJCiT7Platter.PB_WRAP : d);
         reanchor = true;
     }
-    return {u: u, q: nowMs - s.offsetMs - u / perMs, reanchor: reanchor};
+    const out = DJCiT7Platter.placeScratch;
+    out.u = u;
+    out.q = nowMs - s.offsetMs - u / perMs;
+    out.reanchor = reanchor;
+    return out;
 };
 
 /**
@@ -361,9 +377,6 @@ DJCiT7Platter.publishRate = function(deck) {
  */
 DJCiT7Platter.armDecay = function(deck) {
     const s = DJCiT7Platter.decks[deck];
-    if (s.decayTimer) {
-        engine.stopTimer(s.decayTimer);
-    }
     s.ticksAtArm = s.netTicks;
     // Allow twice the current per-tick interval before declaring a stop. Only consecutive
     // same-direction readings define a speed; one-tick dither (a held record) keeps DECAY_MS.
@@ -372,7 +385,16 @@ DJCiT7Platter.armDecay = function(deck) {
         const capMs = 2000 / (DJCiT7Platter.RATE_EPSILON * DJCiT7Platter.NOMINAL_TPS);
         timeoutMs = Math.max(DJCiT7Platter.DECAY_MS, Math.min(capMs, Math.ceil(2000 / Math.abs(s.velTicksPerSec))));
     }
-    s.decayDeadline = Date.now() + timeoutMs;
+    const nowMs = Date.now();
+    s.decayDeadline = nowMs + timeoutMs;
+    // One timer per deck stays armed; its callback re-checks the deadline. Only a deadline
+    // earlier than the running timer's firing time needs the timer to be replaced.
+    if (s.decayTimer) {
+        if (s.decayDeadline >= s.decayFireMs) {
+            return;
+        }
+        engine.stopTimer(s.decayTimer);
+    }
     DJCiT7Platter.startDecayTimer(deck, timeoutMs);
 };
 
@@ -383,6 +405,7 @@ DJCiT7Platter.armDecay = function(deck) {
  */
 DJCiT7Platter.startDecayTimer = function(deck, ms) {
     const s = DJCiT7Platter.decks[deck];
+    s.decayFireMs = Date.now() + ms;
     s.decayTimer = engine.beginTimer(ms, function() {
         const st = DJCiT7Platter.decks[deck];
         st.decayTimer = 0;
@@ -406,12 +429,13 @@ DJCiT7Platter.startDecayTimer = function(deck, ms) {
 };
 
 /**
- * Whether the deck has a track, the precondition for reading the platter.
+ * Whether the deck has a track, the precondition for reading the platter. Read from a cache
+ * that the track_loaded connection keeps current.
  * @param {number} deck Deck number.
  * @returns {boolean} True when a track is loaded.
  */
 DJCiT7Platter.trackLoaded = function(deck) {
-    return !!engine.getValue(DJCiT7Platter.group(deck), "track_loaded");
+    return DJCiT7Platter.loaded[deck];
 };
 
 /**
@@ -487,7 +511,9 @@ DJCiT7Platter.init = function() {
         DJCiT7Platter.connections.push(engine.makeConnection(group, "rate_ratio", function(value) {
             DJCiT7Platter.setMotorSpeed(deck, value);
         }));
-        DJCiT7Platter.connections.push(engine.makeConnection(group, "track_loaded", function() {
+        DJCiT7Platter.loaded[deck] = !!engine.getValue(group, "track_loaded");
+        DJCiT7Platter.connections.push(engine.makeConnection(group, "track_loaded", function(value) {
+            DJCiT7Platter.loaded[deck] = !!value;
             DJCiT7Platter.resetTiming(deck);
             DJCiT7Platter.decks[deck].lastPos = null;
             DJCiT7Platter.syncTransport(deck);
@@ -658,7 +684,8 @@ DJCiT7Platter.platterTime = function(channel, control, value, status, group) {
     s.holdStartMs = null;
     s.holdLastU = null;
     s.dSpanCounts = 0;
-    s.tickCounts = [s.tickCounts[1], v1Counts / Math.abs(span)];
+    s.tickCounts[0] = s.tickCounts[1];
+    s.tickCounts[1] = v1Counts / Math.abs(span);
     s.v1Placed++;
     DJCiT7Platter.lowerEnvelope(s, place.q,
         !place.reanchor || Math.abs(s.velTicksPerSec) >= DJCiT7Platter.HOLD_MIN_TPS);

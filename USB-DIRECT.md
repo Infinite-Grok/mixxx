@@ -132,3 +132,6 @@ Automatic event and pump masks are now both the whole big-core set (when it has 
 
 ## I4
 versionName 0.1.0-usbdirect.7: 8 samplers on Android, Developer tools window created on demand. No lib/usbdirect change.
+
+## I5
+versionName 0.1.0-usbdirect.8: T7 platter script CPU cut, behaviour identical (one decay timer per deck re-checking a deadline, lookup tables instead of regex/template strings, cached track_loaded, reused placement/tick arrays). Script only; test app only.
