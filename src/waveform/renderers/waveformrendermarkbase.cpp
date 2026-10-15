@@ -36,6 +36,7 @@ void WaveformRenderMarkBase::onSetTrack() {
 }
 
 void WaveformRenderMarkBase::onResize() {
+    MarkImageStats::Scope statsScope(m_waveformRenderer->getGroup() + QStringLiteral("/resize"));
     m_marks.setBreadth(m_waveformRenderer->getBreadth());
     if (m_updateImagesImmediately) {
         updateMarkImages();
@@ -53,6 +54,7 @@ void WaveformRenderMarkBase::slotCuesUpdated() {
 }
 
 void WaveformRenderMarkBase::updateMarksFromCues() {
+    MarkImageStats::Scope statsScope(m_waveformRenderer->getGroup() + QStringLiteral("/cues"));
     const TrackPointer pTrackInfo = m_waveformRenderer->getTrackInfo();
     if (!pTrackInfo) {
         return;
@@ -78,7 +80,7 @@ void WaveformRenderMarkBase::updateMarksFromCues() {
         pMark->setText(newLabel);
         pMark->setBaseColor(newColor, dimBrightThreshold);
         if (pMark->isJump()) {
-            pMark->setNeedsImageUpdate();
+            pMark->setNeedsImageUpdate(MarkImageStats::Jump);
         }
     }
 
@@ -86,6 +88,7 @@ void WaveformRenderMarkBase::updateMarksFromCues() {
 }
 
 void WaveformRenderMarkBase::updateMarks() {
+    MarkImageStats::Scope statsScope(m_waveformRenderer->getGroup() + QStringLiteral("/marks"));
     m_marks.update();
     if (m_updateImagesImmediately) {
         updateMarkImages();
@@ -93,6 +96,7 @@ void WaveformRenderMarkBase::updateMarks() {
 }
 
 void WaveformRenderMarkBase::updateMarkImages() {
+    MarkImageStats::logIfDue();
     for (const auto& pMark : m_marks) {
         if (pMark->needsImageUpdate()) {
             updateMarkImage(pMark);

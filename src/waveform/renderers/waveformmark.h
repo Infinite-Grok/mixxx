@@ -10,6 +10,7 @@
 #include "control/pollingcontrolproxy.h"
 #include "engine/controls/cuecontrol.h"
 #include "track/cue.h"
+#include "waveform/renderers/markimagestats.h"
 #include "waveform/renderers/waveformsignalcolors.h"
 #include "waveform/waveformmarklabel.h"
 
@@ -166,7 +167,7 @@ class WaveformMark {
     void setText(const QString& text) {
         if (m_text != text) {
             m_text = text;
-            setNeedsImageUpdate();
+            setNeedsImageUpdate(MarkImageStats::Text);
         }
     }
 
@@ -189,7 +190,8 @@ class WaveformMark {
         return isActive() ? m_enabledOpacity : m_disabledOpacity;
     }
 
-    void setNeedsImageUpdate() {
+    void setNeedsImageUpdate(MarkImageStats::Cause cause = MarkImageStats::Other) {
+        MarkImageStats::noteCause(cause);
         if (m_pGraphics) {
             m_pGraphics->m_obsolete = true;
         }
@@ -209,14 +211,14 @@ class WaveformMark {
     void setBreadth(float breadth) {
         if (m_breadth != breadth) {
             m_breadth = breadth;
-            setNeedsImageUpdate();
+            setNeedsImageUpdate(MarkImageStats::Breadth);
         }
     }
 
     void setLevel(int level) {
         if (m_level != level) {
             m_level = level;
-            setNeedsImageUpdate();
+            setNeedsImageUpdate(MarkImageStats::Level);
         }
     }
 

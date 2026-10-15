@@ -330,6 +330,9 @@ void allshader::WaveformRenderMark::update() {
         return;
     }
 
+    MarkImageStats::Scope statsScope(m_waveformRenderer->getGroup() +
+            (m_isSlipRenderer ? QStringLiteral("/slip") : QStringLiteral("/main")));
+
     // For each WaveformMark we create a GeometryNode with Texture
     // (in updateMarkImage). Of these GeometryNodes, we append the
     // the ones that need to be shown on screen as children to
@@ -685,6 +688,7 @@ void allshader::WaveformRenderMark::drawTriangle(QPainter* painter,
 }
 
 void allshader::WaveformRenderMark::updateMarkImage(WaveformMarkPointer pMark) {
+    MarkImageStats::noteImage(false);
     if (!pMark->m_pGraphics) {
         pMark->m_pGraphics =
                 std::make_unique<WaveformMarkNodeGraphics>(pMark.get(),
@@ -703,6 +707,7 @@ void allshader::WaveformRenderMark::updateMarkImage(WaveformMarkPointer pMark) {
     }
 }
 void allshader::WaveformRenderMark::updateEndMarkImage(WaveformMarkPointer pMark) {
+    MarkImageStats::noteImage(true);
     if (!pMark->m_pEndGraphics) {
         pMark->m_pEndGraphics =
                 std::make_unique<WaveformMarkNodeGraphics>(pMark.get(),
