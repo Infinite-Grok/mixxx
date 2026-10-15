@@ -392,7 +392,13 @@ void QmlConfigProxy::set_waveformDefaultZoom(double value) {
             3,
             &QmlConfigProxy::waveformDefaultZoomChanged);
 }
-PROPERTY_IMPL_GETTER(kWaveformGroup, kFrameRateKey, int, waveformFrameRate, 60);
+#ifdef Q_OS_ANDROID
+// The phone/tablet default; an explicit [Waveform] FrameRate setting wins.
+constexpr int kDefaultWaveformFrameRate = 30;
+#else
+constexpr int kDefaultWaveformFrameRate = 60;
+#endif
+PROPERTY_IMPL_GETTER(kWaveformGroup, kFrameRateKey, int, waveformFrameRate, kDefaultWaveformFrameRate);
 void QmlConfigProxy::set_waveformFrameRate(int frameRate) {
     const int sanitizedFrameRate = std::clamp(frameRate, 1, 240);
     if (WaveformWidgetFactory::isCreated()) {

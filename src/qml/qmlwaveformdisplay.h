@@ -9,6 +9,7 @@
 #include <QSGNode>
 #include <QSGSimpleRectNode>
 #include <QTimer>
+#include <atomic>
 #include <chrono>
 
 #include "qml/qmlplayerproxy.h"
@@ -164,6 +165,11 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
   private:
     void setCurrentTrack(TrackPointer pTrack);
     void requestUpdateAtFrameRate();
+    // Idle redraw throttling: true if nothing visible depends on the clock (no track, or paused with an unchanged
+    // position and zoom since the last drawn frame).
+    bool hasTrackToDraw() const;
+    bool drawnStateChanged() const;
+    void slotIdlePoll();
 
     // Properties
     QPointer<QmlPlayerProxy> m_pPlayer;
@@ -172,6 +178,13 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
     PerformanceTimer m_timer;
     QElapsedTimer m_frameRequestTimer;
     QTimer m_frameRateTimer;
+    // Idle: a cheap poll (no rendering) that wakes the frame loop when the position or zoom changes, plus a slow
+    // heartbeat frame for everything else (cues, loops, analysis progress).
+    QTimer m_idleTimer;
+    QElapsedTimer m_idleHeartbeat;
+    // State of the last frame drawn by this item (written in updatePaintNode, read on the GUI thread).
+    std::atomic<double> m_drawnPlayPos{-2.0};
+    std::atomic<double> m_drawnZoom{-2.0};
     QmlTrackProxy* m_pTrack;
     QSharedPointer<VisualPlayPosition> m_visualPlayPosition;
 

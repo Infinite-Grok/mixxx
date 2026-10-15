@@ -104,3 +104,12 @@ Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4).
    instead of `clearAndQueryDevices()` + `setupDevices()` or `setConfig()`: a grant does not change the device list, and
    `clearAndQueryDevices()` closes devices and sleeps 5 s on the main thread if any is open, while `setConfig()` also
    runs `checkConfig()` and rewrites the config file. The 3 s permission poll in `open()` stays as the fast path.
+4. **Idle waveforms.** `QmlWaveformDisplay::slotFrameSwapped` no longer re-arms the frame loop unconditionally.
+   (a) With no track (and no static track) the loop stops after the frame that cleared it; loading a track, options,
+   size changes etc. already call `update()`. (b) With a track whose engine play position and zoom equal those of the
+   last frame this item drew, no frame is scheduled; instead a 50 ms `QTimer` only compares the state (no render)
+   and starts the normal loop as soon as it changes (play, seek, scratch, zoom), and one frame is drawn every 200 ms
+   as a heartbeat. The heartbeat is a deliberate deviation from "no frame at all": cue/loop edits, rate changes and
+   analysis progress have no `update()` hook while paused. After an idle period the frame-time references are reset
+   so the first frame does not trigger the position warnings. This applies on desktop too (the QML waveform item is
+   shared). `[Waveform] FrameRate` defaults to 30 on Android when the key is absent (an explicit value wins).

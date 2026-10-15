@@ -27,7 +27,14 @@
 using namespace allshader;
 
 namespace {
+#ifdef Q_OS_ANDROID
+constexpr int kDefaultFrameRate = 30;
+#else
 constexpr int kDefaultFrameRate = 60;
+#endif
+// Idle (empty, or paused and unchanged): poll the state without rendering, and draw a frame at least this often.
+constexpr int kIdlePollMs = 50;
+constexpr int kIdleHeartbeatMs = 200;
 } // namespace
 
 namespace mixxx {
@@ -62,6 +69,10 @@ QmlWaveformDisplay::QmlWaveformDisplay(QQuickItem* parent)
         m_frameRequestTimer.restart();
         update();
     });
+
+    m_idleTimer.setSingleShot(true);
+    m_idleTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_idleTimer, &QTimer::timeout, this, &QmlWaveformDisplay::slotIdlePoll);
 
     connect(this,
             &QmlWaveformDisplay::windowChanged,
@@ -288,6 +299,7 @@ void QmlWaveformDisplay::slotWindowChanged(QQuickWindow* window) {
     }
     m_timer.restart();
     m_frameRateTimer.stop();
+    m_idleTimer.stop();
     m_frameRequestTimer.restart();
 }
 
@@ -316,9 +328,58 @@ std::chrono::microseconds QmlWaveformDisplay::fromTimerToNextSync(const Performa
     return m_syncInterval + std::chrono::microseconds(m_timer.difference(timer).toIntegerMicros());
 }
 
+bool QmlWaveformDisplay::hasTrackToDraw() const {
+    return m_pTrack != nullptr || getTrackInfo() != nullptr;
+}
+
+bool QmlWaveformDisplay::drawnStateChanged() const {
+    return m_visualPlayPosition->getEnginePlayPos() !=
+            m_drawnPlayPos.load(std::memory_order_relaxed) ||
+            getZoom() != m_drawnZoom.load(std::memory_order_relaxed);
+}
+
 void QmlWaveformDisplay::slotFrameSwapped() {
     m_timer.restart();
+    if (!window()) {
+        return;
+    }
+    if (!hasTrackToDraw()) {
+        // Nothing to draw once the frame that cleared the track is done. Loading a track, changing the options
+        // or the size all call update(), which restarts this loop.
+        m_frameRateTimer.stop();
+        m_idleTimer.stop();
+        return;
+    }
+    if (!drawnStateChanged()) {
+        // Paused (or static) and nothing moved since the last frame this item drew.
+        m_frameRateTimer.stop();
+        if (!m_idleTimer.isActive()) {
+            if (!m_idleHeartbeat.isValid()) {
+                m_idleHeartbeat.start();
+            }
+            m_idleTimer.start(kIdlePollMs);
+        }
+        return;
+    }
+    m_idleTimer.stop();
+    m_idleHeartbeat.invalidate();
     requestUpdateAtFrameRate();
+}
+
+void QmlWaveformDisplay::slotIdlePoll() {
+    if (!window() || !hasTrackToDraw()) {
+        return;
+    }
+    if (drawnStateChanged() ||
+            (m_idleHeartbeat.isValid() && m_idleHeartbeat.elapsed() >= kIdleHeartbeatMs)) {
+        m_idleHeartbeat.invalidate();
+        // The frame time reference is stale after an idle period: the next VSync is about one interval away.
+        m_timer.restart();
+        m_frameRequestTimer.restart();
+        update();
+        return;
+    }
+    m_idleTimer.start(kIdlePollMs);
 }
 
 void QmlWaveformDisplay::requestUpdateAtFrameRate() {
@@ -433,6 +494,8 @@ QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*
     }
 
     onPreRender(this);
+    m_drawnPlayPos.store(m_visualPlayPosition->getEnginePlayPos(), std::memory_order_relaxed);
+    m_drawnZoom.store(getZoom(), std::memory_order_relaxed);
 
     for (auto* pRenderer : std::as_const(m_rendererStack)) {
         pRenderer->update();
