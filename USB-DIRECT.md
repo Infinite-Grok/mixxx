@@ -120,3 +120,6 @@ Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4).
    created) and `suspend()`s the batch scheduler while any deck plays; it `resume()`s it when all stopped.
    `resumeAnalysis()` (also called by `Library` when the load-time analysis goes idle) is a no-op while deferred.
    Config `[Android] defer_analysis_while_playing` (default 1, 0 = off).
+
+## I3c: USB permission broadcast delivery (2026-10-16)
+The permission PendingIntent is now an explicit intent (setPackage) with FLAG_MUTABLE, so Android 14+ delivers it to the RECEIVER_NOT_EXPORTED receiver and the system can add EXTRA_DEVICE / EXTRA_PERMISSION_GRANTED. Receiver logs "Received" at info level; typed getParcelableExtra on API 33+.

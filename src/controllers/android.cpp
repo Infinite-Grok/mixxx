@@ -43,10 +43,12 @@ const QJniObject& getIntent() {
     QJniObject context = QNativeInterface::QAndroidApplication::context();
 
     s_usbManager = QJniObject("org/mixxx/UsbPermission");
-    jint FLAG_IMMUTABLE =
+    // FLAG_MUTABLE: the system must be able to add EXTRA_DEVICE and
+    // EXTRA_PERMISSION_GRANTED to the intent (FLAG_IMMUTABLE drops them).
+    jint FLAG_MUTABLE =
             QJniObject::getStaticField<jint>(
                     "android/app/PendingIntent",
-                    "FLAG_IMMUTABLE");
+                    "FLAG_MUTABLE");
     QtJniTypes::String ACTION_USB_PERMISSION =
             QJniObject::fromString("org.mixxx.permissions.USB_PERMISSION");
     QtJniTypes::Intent intent = QJniObject("android/content/Intent",
@@ -55,6 +57,12 @@ const QJniObject& getIntent() {
     if (!intent.isValid()) {
         __android_log_print(ANDROID_LOG_WARN, "mixxx", "pending intent is invalid!");
     }
+    // Explicit intent: since Android 14 (target >= 34) implicit intents are not
+    // delivered to receivers registered with RECEIVER_NOT_EXPORTED.
+    QJniObject packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+    QJniObject(intent.object<jobject>()).callObjectMethod("setPackage",
+            "(Ljava/lang/String;)Landroid/content/Intent;",
+            packageName.object<jstring>());
     s_intent =
             QJniObject::callStaticMethod<jobject>("android/app/PendingIntent",
                     "getBroadcast",
@@ -63,7 +71,7 @@ const QJniObject& getIntent() {
                     context,
                     0,
                     intent,
-                    FLAG_IMMUTABLE);
+                    FLAG_MUTABLE);
 
     if (!s_intent.isValid()) {
         __android_log_print(ANDROID_LOG_WARN, "mixxx", "pending intent is invalid!");
