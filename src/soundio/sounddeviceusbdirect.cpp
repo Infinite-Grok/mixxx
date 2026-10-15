@@ -300,6 +300,21 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         m_isolateEnabled = m_pConfig->getValue(ConfigKey(QStringLiteral("[Android]"),
                                    QStringLiteral("usb_direct_isolate")),
                                    1) != 0;
+        {
+            // I3d: -1 = automatic (cpu0 kept free for the xHCI interrupt), else a hex/decimal mask.
+            const QString text = m_pConfig->getValue(
+                    ConfigKey(QStringLiteral("[Android]"),
+                            QStringLiteral("usb_direct_isolate_other_mask")),
+                    "-1");
+            bool ok = false;
+            const qlonglong v = text.trimmed().toLongLong(&ok, 0);
+            if (!ok || v < -1) {
+                qWarning() << "USB Direct: ignoring invalid usb_direct_isolate_other_mask" << text;
+                m_isoOverrideMask = -1;
+            } else {
+                m_isoOverrideMask = v;
+            }
+        }
         m_adpf = m_pConfig->getValue(
                          ConfigKey(QStringLiteral("[Android]"), QStringLiteral("usb_direct_adpf")),
                          1) != 0;
@@ -492,13 +507,16 @@ void SoundDeviceUsbDirect::startIsolation() {
     }
     // The masks actually in force on the two threads, not the requested ones: a failed pin leaves the
     // inherited mask, which leaves nothing to isolate.
-    const usbdirect::IsolationPlan plan = usbdirect::planIsolation(allowed, eventActual, pumpActual);
+    const usbdirect::IsolationPlan plan = usbdirect::planIsolation(
+            allowed, eventActual, pumpActual, static_cast<int64_t>(m_isoOverrideMask));
     if (!plan.apply) {
         qInfo().noquote() << QStringLiteral(
-                "USB Direct core isolation: skipped (allowed=0x%1 event=0x%2 pump=0x%3)")
+                "USB Direct core isolation: skipped (allowed=0x%1 event=0x%2 pump=0x%3 "
+                "override=%4)")
                                      .arg(allowed, 0, 16)
                                      .arg(eventActual, 0, 16)
-                                     .arg(pumpActual, 0, 16);
+                                     .arg(pumpActual, 0, 16)
+                                     .arg(m_isoOverrideMask);
         return;
     }
     m_isoAllowedMask = allowed;

@@ -123,3 +123,6 @@ Evidence: `docs/research/android-usbdirect-blu-stalls-20261015.md` (F1, F3, F4).
 
 ## I3c: USB permission broadcast delivery (2026-10-16)
 The permission PendingIntent is now an explicit intent (setPackage) with FLAG_MUTABLE, so Android 14+ delivers it to the RECEIVER_NOT_EXPORTED receiver and the system can add EXTRA_DEVICE / EXTRA_PERMISSION_GRANTED. Receiver logs "Received" at info level; typed getParcelableExtra on API 33+.
+
+## I3d: keep cpu0 free for the USB interrupt (2026-10-16)
+Isolation now leaves cpu0 (where the xHCI interrupt fires) to the interrupt path. Automatic other mask = allowed & ~audio & ~cpu0 when at least 2 CPUs remain, else the I3b value. [Android] usb_direct_isolate_other_mask: -1 (default) = automatic, else a hex/decimal mask applied as mask & allowed & ~audio (empty result skips isolation and logs why). Log and stats show the applied other= mask.

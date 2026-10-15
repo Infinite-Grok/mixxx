@@ -85,6 +85,7 @@ class SoundDeviceUsbDirect : public SoundDevice {
     uint32_t m_pumpCpuMask = 0;
     bool m_adpf = false;
     bool m_isolateEnabled = true;
+    qlonglong m_isoOverrideMask = -1; // [Android] usb_direct_isolate_other_mask (I3d)
     bool m_isoActive = false;
     uint64_t m_isoAllowedMask = 0;
     uint64_t m_isoOtherMask = 0;

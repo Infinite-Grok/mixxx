@@ -24,12 +24,22 @@ struct IsolationPlan {
     uint64_t otherMask = 0; /* allowed & ~audio */
 };
 
-inline IsolationPlan planIsolation(uint64_t allowedMask, uint64_t eventMask, uint64_t pumpMask) {
+/* overrideMask: -1 = automatic (allowed & ~audio & ~cpu0 when >= 2 CPUs remain, else allowed & ~audio; cpu0 is where
+ * Android routes most device IRQs, incl. the xHCI); otherwise a mask used as override & allowed & ~audio (empty ->
+ * skip). */
+inline IsolationPlan planIsolation(uint64_t allowedMask, uint64_t eventMask, uint64_t pumpMask,
+                                   int64_t overrideMask = -1) {
     IsolationPlan p;
     if (eventMask == 0 || pumpMask == 0) return p;
     p.audioMask = eventMask | pumpMask;
     if ((p.audioMask & ~allowedMask) != 0) return p; /* audio CPU not allowed: placement failed, do not isolate */
-    p.otherMask = allowedMask & ~p.audioMask;
+    const uint64_t base = allowedMask & ~p.audioMask;
+    if (overrideMask >= 0) {
+        p.otherMask = base & (uint64_t)overrideMask;
+    } else {
+        const uint64_t noCpu0 = base & ~(uint64_t)1;
+        p.otherMask = (__builtin_popcountll(noCpu0) >= 2) ? noCpu0 : base;
+    }
     if (p.otherMask == 0) return p;
     p.apply = true;
     return p;
