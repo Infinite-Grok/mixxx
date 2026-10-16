@@ -36,12 +36,18 @@ class allshader::WaveformRenderMarkRange final : public ::WaveformRendererAbstra
     void update() override;
 
   private:
-    void updateNode(rendergraph::GeometryNode* pChild,
-            QColor color,
-            QVector2D lt,
-            QVector2D rb);
+    struct NodeState {
+        rendergraph::GeometryNode* pNode;
+        QColor color;
+        QVector2D lt;
+        QVector2D rb;
+        bool initialized;
+    };
+    void noteRangeNode(const char* what) const;
 
     std::vector<WaveformMarkRange> m_markRanges;
+    // One persistent node per entry of m_markRanges (same index); children of this node.
+    std::vector<NodeState> m_nodes;
 
     DISALLOW_COPY_AND_ASSIGN(WaveformRenderMarkRange);
 };
