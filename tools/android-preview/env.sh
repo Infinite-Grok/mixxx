@@ -37,7 +37,7 @@ NINJA_JOBS="${NINJA_JOBS:-3}"
 GRADLE_WORKERS="${GRADLE_WORKERS:-2}"
 
 # applicationId (must match CMakeLists.txt ANDROID_PACKAGE_NAME).
-PREVIEW_APP_ID="io.github.infinitegrok.mixxxpreview.usbdirect"
+PREVIEW_APP_ID="io.github.infinitegrok.mixxxpreview"
 
 # Release signing: the key is NEVER in the repository. The password is read from a file.
 PREVIEW_KEYSTORE="${PREVIEW_KEYSTORE:-}"

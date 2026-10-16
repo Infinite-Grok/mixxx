@@ -1,7 +1,6 @@
 # USB Direct sound device (test branch `feature/usb-direct`)
 
-Experimental. Android only. Test identity: applicationId `io.github.infinitegrok.mixxxpreview.usbdirect`,
-label "Mixxx USB Direct (test)", installs next to the public preview. Not for publication.
+Experimental. Android only. Preview.2 identity: applicationId `io.github.infinitegrok.mixxxpreview`, label "Mixxx Preview (unofficial)", release build (not debuggable); updates the public preview.1 install. Earlier test builds used the `.usbdirect` id.
 
 ## What it does
 
@@ -161,3 +160,5 @@ Faster USB depth settling. New [Android] ini keys: usb_direct_depth_start (defau
 
 ## Preview.2 cleanup
 Removed test instrumentation: MarkImageStats, the /dirty /node /range /create counters, forced QSG_INFO and the qsg_render_loop file switch, the render-loop log line. The periodic 10 s USB Direct stats logcat line is now only written when [Android] usb_direct_stats is 1 (default 0). All functional fixes are kept.
+
+USB Direct stays opt-in: a fresh install uses Android Oboe; USB Direct is listed under Preferences > Sound hardware > Sound API only while a supported USB audio device is attached. All tuning defaults (depth 6/4/20 s, isolation, ADPF, idle redraw gate, 8 samplers, 30 fps waveform) are in code and need no ini.

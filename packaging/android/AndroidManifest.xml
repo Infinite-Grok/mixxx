@@ -20,10 +20,9 @@
         android:smallScreens="true" />
     <application
         android:name="org.qtproject.qt.android.bindings.QtApplication"
-        android:debuggable="true"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Mixxx USB Direct (test)"
+        android:label="Mixxx Preview (unofficial)"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"

@@ -2414,7 +2414,7 @@ if(QT6)
     set_property(TARGET mixxx-lib PROPERTY ANDROID_ABIS "arm64-v8a")
     target_compile_definitions(
       mixxx-lib
-      PUBLIC ANDROID_PACKAGE_NAME="io.github.infinitegrok.mixxxpreview.usbdirect"
+      PUBLIC ANDROID_PACKAGE_NAME="io.github.infinitegrok.mixxxpreview"
     )
     qt_add_executable(mixxx src/main.cpp MANUAL_FINALIZATION)
     set_property(
@@ -2428,7 +2428,7 @@ if(QT6)
     # Qt derives the Gradle applicationId from the Java namespace (org.mixxx),
     # which must stay for the Java classes, so tools/android-preview/
     # assemble_release.sh sets the applicationId in the generated build.gradle.
-    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "io.github.infinitegrok.mixxxpreview.usbdirect")
+    set_target_properties(mixxx PROPERTIES QT_ANDROID_PACKAGE_NAME "io.github.infinitegrok.mixxxpreview")
     # libremidi's Android backend needs AMidi (API 29) and JNI_GetCreatedJavaVMs
     # (API 31), so the preview needs minSdk 31. Upstream keeps the Qt default.
     set_target_properties(mixxx PROPERTIES QT_ANDROID_MIN_SDK_VERSION 31)
