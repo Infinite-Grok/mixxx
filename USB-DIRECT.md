@@ -147,3 +147,6 @@ versionName 0.1.0-usbdirect.11. Mark breadth is single-sourced (`WaveformRenderM
 
 ## I6d
 versionName 0.1.0-usbdirect.12. QmlWaveformDisplay keeps its paint-node root in members (pointer identity instead of dynamic_cast on children) and counts every way Qt can drop it in the MarkImageStats line as [ChannelN]/node:<reason> (null, foreign, release-resources, scene-in, scene-out, visible, hidden, parent).
+
+## I6e
+versionName 0.1.0-usbdirect.13. allshader::WaveformRenderMarkRange keeps one persistent node per configured range (zero-area rectangle when inactive/hidden/off-screen; colour and geometry rewritten only on change). New ini key  (default 1 = I3b-4 idle gating; 0 = always redraw at the frame rate, no idle poll/heartbeat). MarkImageStats gains  (counted in the other= column).
