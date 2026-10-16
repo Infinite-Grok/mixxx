@@ -333,6 +333,17 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
                                      .arg(m_pumpCpuMask, 0, 16)
                                      .arg(m_adpf ? 1 : 0);
     }
+    {
+        const auto cfgInt = [this](const char* key, int def) {
+            return m_pConfig->getValue(
+                    ConfigKey(QStringLiteral("[Android]"), QString::fromLatin1(key)), def);
+        };
+        options.minDepth = static_cast<unsigned>(std::clamp(cfgInt("usb_direct_depth_min", 4), 2, 16));
+        options.startDepth = static_cast<unsigned>(std::clamp(
+                cfgInt("usb_direct_depth_start", 6), static_cast<int>(options.minDepth), 16));
+        options.depthWindowMs = static_cast<unsigned>(
+                std::clamp(cfgInt("usb_direct_depth_window_ms", 20000), 5000, 600000));
+    }
     m_pOut = std::make_unique<usbdirect::UsbAudioOut>(options);
 
     std::vector<unsigned char> raw;
@@ -416,7 +427,9 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         m_clkRefTimer.start();
     }
     qInfo() << "USB Direct opened:" << m_strDisplayName << "block" << block << "fifo target"
-            << target << "clock reference" << isClkRefDevice;
+            << target << "clock reference" << isClkRefDevice << "depth start"
+            << options.startDepth << "min" << options.minDepth << "window ms"
+            << options.depthWindowMs;
     return SoundDeviceStatus::Ok;
 }
 

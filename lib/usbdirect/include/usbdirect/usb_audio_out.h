@@ -28,7 +28,9 @@ enum class Halt {
 const char *haltName(Halt h);
 
 struct Options {
-    unsigned startDepth = 12;      /* initial OUT queue depth (1 ms packets), clamped [4,16] */
+    unsigned startDepth = 12;      /* initial OUT queue depth (1 ms packets), clamped [minDepth,16] */
+    unsigned minDepth = 4;         /* depth floor, clamped [2,16] */
+    unsigned depthWindowMs = 120000; /* lower-step window, clamped [5000,600000] */
     size_t fifoFrames = 16384;     /* FIFO capacity, power of two >= 8192 (rounded up) */
     bool spawnThread = true;       /* false: caller drives eventStep() (host tests) */
     bool setPriority = true;       /* nice -19 on the event thread (Android only) */

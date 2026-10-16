@@ -42,6 +42,7 @@ const char *haltName(Halt h) {
 }
 
 namespace {
+static inline unsigned clampU(unsigned v, unsigned lo, unsigned hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 constexpr unsigned kMaxOut = 16, kFbDepth = 2, kSlots = kMaxOut + kFbDepth, kPacketBytes = 540;
 constexpr unsigned kMaxPacketFrames = kPacketBytes / 12;
@@ -129,7 +130,8 @@ struct UsbAudioOut::Impl {
 
     explicit Impl(const Options &o)
         : opt(o), clk(o.clock ? o.clock : monoNs), fifo(o.fifoFrames),
-          ctrl(o.startDepth < 4 ? 4 : o.startDepth > 16 ? 16 : o.startDepth) {
+          ctrl(o.startDepth, clampU(o.minDepth, 2, 16), 16,
+               (uint64_t)clampU(o.depthWindowMs, 5000, 600000) * 1000000ull) {
         clock.rate = T7_NOMINAL;
         for (unsigned i = 0; i < kSlots; i++) {
             slots[i].impl = this;

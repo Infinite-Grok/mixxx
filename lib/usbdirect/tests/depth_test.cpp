@@ -52,6 +52,17 @@ int main() {
         for (uint64_t i = 1; i <= 500; i++) sparse.onGap(2 * MS, i * 1000 * MS);
         CHECK(sparse.depth() == 12 && sparse.changeCount() == 0);
     }
+    { /* L1: start 6, min 2, 20 s window: one step per window down to the floor */
+        DepthController c(6, 2, 16, 20000ull * MS);
+        uint64_t t = 0;
+        CHECK(c.depth() == 6 && c.minDepth() == 2);
+        run(c, t, 19, 1 * MS);
+        CHECK(c.depth() == 6);
+        run(c, t, 2, 1 * MS);
+        CHECK(c.depth() == 5 && c.lastReason() == R::WindowLower);
+        for (int i = 0; i < 6; i++) run(c, t, 21, 1 * MS);
+        CHECK(c.depth() == 2); /* target ceil(1+1)=2 = floor */
+    }
     { /* never below target; target = ceil(max_ms + 1); at most one step per window */
         DepthController c(16);
         uint64_t t = 0;

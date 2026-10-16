@@ -155,3 +155,6 @@ versionName 0.1.0-usbdirect.13. allshader::WaveformRenderMarkRange keeps one per
 `rendergraph::BaseMaterial::updateUniformsByteArray` now compares the material's uniform cache
 (after the 64-byte matrix) with the buffer Qt passes and writes when different, instead of copying
 only while the dirty flag is set. Fixes the loop highlight showing a stale (disabled/white) colour.
+
+## L1 (versionName 0.1.0-usbdirect.15)
+Faster USB depth settling. New [Android] ini keys: usb_direct_depth_start (default 6, clamp min..16), usb_direct_depth_min (default 4, clamp 2..16), usb_direct_depth_window_ms (default 20000, clamp 5000..600000). Raise logic unchanged. Effective values are in the "USB Direct opened" log line.
