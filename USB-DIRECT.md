@@ -150,3 +150,8 @@ versionName 0.1.0-usbdirect.12. QmlWaveformDisplay keeps its paint-node root in 
 
 ## I6e
 versionName 0.1.0-usbdirect.13. allshader::WaveformRenderMarkRange keeps one persistent node per configured range (zero-area rectangle when inactive/hidden/off-screen; colour and geometry rewritten only on change). New ini key  (default 1 = I3b-4 idle gating; 0 = always redraw at the frame rate, no idle poll/heartbeat). MarkImageStats gains  (counted in the other= column).
+
+## I6f (versionName 0.1.0-usbdirect.14)
+`rendergraph::BaseMaterial::updateUniformsByteArray` now compares the material's uniform cache
+(after the 64-byte matrix) with the buffer Qt passes and writes when different, instead of copying
+only while the dirty flag is set. Fixes the loop highlight showing a stale (disabled/white) colour.
