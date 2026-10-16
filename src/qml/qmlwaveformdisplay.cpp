@@ -115,6 +115,12 @@ void QmlWaveformDisplay::componentComplete() {
     }
 
     if (auto* pConfig = qobject_cast<QmlConfigProxy*>(QmlConfigProxyBase::s_pInstance)) {
+        m_idleGate = pConfig->waveformIdleRedrawGate();
+        static std::atomic<bool> s_gateLogged{false};
+        if (!s_gateLogged.exchange(true)) {
+            qInfo() << "[Waveform] idle_redraw_gate =" << m_idleGate
+                    << "(1: idle waveforms stop redrawing, 0: always redraw at the frame rate)";
+        }
         const auto refreshRenderers = [this]() {
             this->refreshRenderers();
         };
@@ -392,6 +398,11 @@ bool QmlWaveformDisplay::drawnStateChanged() const {
 void QmlWaveformDisplay::slotFrameSwapped() {
     m_timer.restart();
     if (!window()) {
+        return;
+    }
+    if (!m_idleGate) {
+        // I6e switch: no idle poll/heartbeat path, redraw at the frame rate like before I3b-4.
+        requestUpdateAtFrameRate();
         return;
     }
     if (!hasTrackToDraw()) {

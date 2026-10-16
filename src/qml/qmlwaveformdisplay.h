@@ -196,6 +196,8 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
 
     std::chrono::microseconds m_syncInterval;
     int m_frameRate;
+    // [Waveform] idle_redraw_gate (I6e): false = always redraw at the frame rate (pre-I3b-4 loop).
+    bool m_idleGate{true};
     enum class DirtyFlag : int {
         None = 0x0,
         Geometry = 0x1,

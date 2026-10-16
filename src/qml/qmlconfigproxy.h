@@ -400,6 +400,8 @@ class QmlConfigProxy : public QmlConfigProxyBase {
     PROPERTY_DECL_ACCESSOR(bool, waveformCachingEnabled);
     PROPERTY_DECL_ACCESSOR(bool, waveformGenerationWithAnalysisEnabled);
     double waveformAverageFrameRate() const;
+    // [Waveform] idle_redraw_gate (I6e): 1 = idle waveforms stop redrawing (default), 0 = always redraw.
+    bool waveformIdleRedrawGate() const;
 
     // Library group
     PROPERTY_DECL_ACCESSOR(mixxx::preferences::Tooltips, libraryTooltips);

@@ -399,6 +399,11 @@ constexpr int kDefaultWaveformFrameRate = 30;
 constexpr int kDefaultWaveformFrameRate = 60;
 #endif
 PROPERTY_IMPL_GETTER(kWaveformGroup, kFrameRateKey, int, waveformFrameRate, kDefaultWaveformFrameRate);
+PROPERTY_IMPL_GETTER(kWaveformGroup,
+        QStringLiteral("idle_redraw_gate"),
+        bool,
+        waveformIdleRedrawGate,
+        true);
 void QmlConfigProxy::set_waveformFrameRate(int frameRate) {
     const int sanitizedFrameRate = std::clamp(frameRate, 1, 240);
     if (WaveformWidgetFactory::isCreated()) {
