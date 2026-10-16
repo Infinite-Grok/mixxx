@@ -162,3 +162,45 @@ Faster USB depth settling. New [Android] ini keys: usb_direct_depth_start (defau
 Removed test instrumentation: MarkImageStats, the /dirty /node /range /create counters, forced QSG_INFO and the qsg_render_loop file switch, the render-loop log line. The periodic 10 s USB Direct stats logcat line is now only written when [Android] usb_direct_stats is 1 (default 0). All functional fixes are kept.
 
 USB Direct stays opt-in: a fresh install uses Android Oboe; USB Direct is listed under Preferences > Sound hardware > Sound API only while a supported USB audio device is attached. All tuning defaults (depth 6/4/20 s, isolation, ADPF, idle redraw gate, 8 samplers, 30 fps waveform) are in code and need no ini.
+
+## User guide: USB Direct (experimental)
+
+**What it is.** An optional Sound API that bypasses Android's audio stack and writes Mixxx's output straight to the
+controller's own USB audio interface. This gives lower output latency: about 16 ms of output buffering was measured on a
+Samsung Galaxy Z Fold, lower than through Android's normal path (Android Oboe).
+
+**Supported hardware.** Hercules DJControl Inpulse T7 only. Tested on a Samsung Galaxy Z Fold and a BLU B160V. Other
+interfaces are not supported (the API offers 44100 Hz only).
+
+**How to enable.**
+1. Connect the T7.
+2. Open Settings > Sound hardware > Sound API and choose "USB Direct". The entry appears only while a supported device is attached.
+3. Accept the Android prompt "Allow ... to access DJControl Inpulse T7?". Audio starts without restarting Mixxx.
+
+A fresh install keeps Android Oboe as the default; USB Direct is never enabled automatically.
+
+**What it changes.** While Mixxx runs with USB Direct selected, it takes the T7's audio interface exclusively: other apps and
+system sounds cannot play through the T7. MIDI controls still go through Android as before.
+
+**How to go back.** Settings > Sound hardware > Sound API > Android Oboe.
+
+**Troubleshooting.**
+- No audio: replug the T7 or relaunch Mixxx, and check that the permission prompt was accepted.
+- If Mixxx is closed while the permission prompt is open, the grant applies on the next launch.
+- After a stream error there is no automatic fallback to Oboe: audio stops until you re-apply the sound configuration or
+  restart. If Android audio does not return after stopping, replug the controller.
+
+**Advanced settings (leave alone unless debugging).** Optional keys under `[Android]` in the Mixxx user config; defaults
+need no ini file.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `usb_direct_fifo_target_frames` | block size + 256 | FIFO target between engine and USB |
+| `usb_direct_depth_start` | 6 | initial USB queue depth (clamped min..16) |
+| `usb_direct_depth_min` | 4 | minimum queue depth (clamped 2..16) |
+| `usb_direct_depth_window_ms` | 20000 | window of the depth-raise logic (clamped 5000..600000) |
+| `usb_direct_isolate` | 1 | 0 turns off moving other threads off the audio CPUs |
+| `usb_direct_isolate_other_mask` | -1 (automatic) | CPU mask for the other threads while isolating |
+| `usb_direct_event_cpu_mask`, `usb_direct_pump_cpu_mask` | -1 (automatic: big cores) | CPU pinning of the USB event and pump threads (0 = no pinning) |
+| `usb_direct_adpf` | 1 | Android performance hint session |
+| `usb_direct_stats` | 0 | 1 logs a stats line to logcat every 10 s |
