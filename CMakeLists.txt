@@ -2434,8 +2434,8 @@ if(QT6)
     set_target_properties(mixxx PROPERTIES QT_ANDROID_MIN_SDK_VERSION 31)
     # Preview release number. versionCode = MAJOR*1000000 + MINOR*10000 +
     # PATCH*100 + PREVIEW (0.1.0-preview.1 -> 10001); it must only ever grow.
-    set(MIXXX_ANDROID_PREVIEW_VERSION_NAME "0.1.0-usbdirect.15" CACHE STRING "Android preview versionName")
-    set(MIXXX_ANDROID_PREVIEW_VERSION_CODE "10001" CACHE STRING "Android preview versionCode")
+    set(MIXXX_ANDROID_PREVIEW_VERSION_NAME "0.1.0-preview.2" CACHE STRING "Android preview versionName")
+    set(MIXXX_ANDROID_PREVIEW_VERSION_CODE "10002" CACHE STRING "Android preview versionCode")
     set_target_properties(
       mixxx
       PROPERTIES
