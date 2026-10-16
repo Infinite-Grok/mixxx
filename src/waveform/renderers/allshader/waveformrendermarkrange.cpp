@@ -5,7 +5,6 @@
 #include "rendergraph/material/unicolormaterial.h"
 #include "rendergraph/vertexupdaters/vertexupdater.h"
 #include "skin/legacy/skincontext.h"
-#include "waveform/renderers/markimagestats.h"
 #include "waveform/renderers/waveformwidgetrenderer.h"
 
 using namespace rendergraph;
@@ -20,8 +19,7 @@ void WaveformRenderMarkRange::setup(const QDomNode& node, const SkinContext& ski
     m_markRanges.clear();
     // The ranges are rebuilt below, so the persistent nodes are dropped (re-created by update()).
     for (const NodeState& state : m_nodes) {
-        auto pDetached = detachChildNode(state.pNode);
-        noteRangeNode("detached");
+        detachChildNode(state.pNode);
     }
     m_nodes.clear();
 
@@ -54,7 +52,6 @@ void WaveformRenderMarkRange::update() {
         pRaw->initForRectangles<UniColorMaterial>(1);
         appendChildNode(std::move(pNode));
         m_nodes.push_back({pRaw, {}, {}, {}, false});
-        noteRangeNode("created");
     }
 
     const float breadth = static_cast<float>(m_waveformRenderer->getBreadth());
@@ -89,33 +86,21 @@ void WaveformRenderMarkRange::update() {
             rb = {0.f, 0.f};
         }
 
-        bool changed = false;
         if (!state.initialized || lt != state.lt || rb != state.rb) {
             VertexUpdater vertexUpdater{state.pNode->geometry().vertexDataAs<Geometry::Point2D>()};
             vertexUpdater.addRectangle(lt, rb);
             state.pNode->markDirtyGeometry();
             state.lt = lt;
             state.rb = rb;
-            changed = true;
         }
         // The colour of a hidden range is irrelevant (zero area); keep the last one to avoid material writes.
         if (!state.initialized || (show && color != state.color)) {
             state.pNode->material().setUniform(1, color);
             state.pNode->markDirtyMaterial();
             state.color = color;
-            changed = true;
         }
         state.initialized = true;
-        if (changed) {
-            noteRangeNode("updated");
-        }
     }
-}
-
-void WaveformRenderMarkRange::noteRangeNode(const char* what) const {
-    MarkImageStats::Scope statsScope(m_waveformRenderer->getGroup() + QStringLiteral("/range:") +
-            QLatin1String(what));
-    MarkImageStats::noteCause(MarkImageStats::Other);
 }
 
 } // namespace allshader

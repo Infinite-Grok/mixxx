@@ -22,7 +22,6 @@
 #include "rendergraph/context.h"
 #include "rendergraph/node.h"
 #include "util/assert.h"
-#include "waveform/renderers/markimagestats.h"
 #include "waveform/visualplayposition.h"
 
 using namespace allshader;
@@ -298,39 +297,8 @@ void QmlWaveformDisplay::setStaticTrack(QmlTrackProxy* track) {
 void QmlWaveformDisplay::markWindowDirty(const char* reason) {
     // Every Window flag rebuilds the whole renderer stack, including every
     // WaveformMark (I6c: this is counted so a storm is attributable).
-    MarkImageStats::Scope statsScope(
-            getGroup() + QStringLiteral("/dirty:") + QLatin1String(reason));
-    MarkImageStats::noteCause(MarkImageStats::Other);
+    Q_UNUSED(reason);
     m_dirtyFlag.setFlag(DirtyFlag::Window, true);
-}
-
-void QmlWaveformDisplay::noteNodeReason(const char* reason) {
-    // I6d: every event that can make Qt drop our paint node is counted as [ChannelN]/node:<reason>.
-    MarkImageStats::Scope statsScope(getGroup() + QStringLiteral("/node:") + QLatin1String(reason));
-    MarkImageStats::noteCause(MarkImageStats::Other);
-}
-
-void QmlWaveformDisplay::releaseResources() {
-    // Called by Qt from QQuickItemPrivate::derefWindow() right before it forgets the paint node.
-    noteNodeReason("release-resources");
-    QQuickItem::releaseResources();
-}
-
-void QmlWaveformDisplay::itemChange(QQuickItem::ItemChange change, const QQuickItem::ItemChangeData& value) {
-    switch (change) {
-    case QQuickItem::ItemSceneChange:
-        noteNodeReason(value.window ? "scene-in" : "scene-out");
-        break;
-    case QQuickItem::ItemVisibleHasChanged:
-        noteNodeReason(value.boolValue ? "visible" : "hidden");
-        break;
-    case QQuickItem::ItemParentHasChanged:
-        noteNodeReason("parent");
-        break;
-    default:
-        break;
-    }
-    QQuickItem::itemChange(change, value);
 }
 
 void QmlWaveformDisplay::slotWindowChanged(QQuickWindow* window) {
@@ -475,7 +443,6 @@ void QmlWaveformDisplay::geometryChange(const QRectF& newGeometry, const QRectF&
 }
 
 QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*) {
-    const bool windowFlagWasSet = m_dirtyFlag.testFlag(DirtyFlag::Window);
     if (m_dirtyFlag.testFlag(DirtyFlag::Window)) {
         delete node;
         node = nullptr;
@@ -494,10 +461,6 @@ QSGNode* QmlWaveformDisplay::updatePaintNode(QSGNode* node, UpdatePaintNodeData*
     }
 
     if (!pBgNode) {
-        if (!windowFlagWasSet) {
-            // Qt handed us no usable node although nothing asked for a rebuild.
-            noteNodeReason(node ? "foreign" : "null");
-        }
         if (node) {
             // Not ours (or inconsistent): drop it, we return a fresh root.
             delete node;

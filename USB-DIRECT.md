@@ -158,3 +158,6 @@ only while the dirty flag is set. Fixes the loop highlight showing a stale (disa
 
 ## L1 (versionName 0.1.0-usbdirect.15)
 Faster USB depth settling. New [Android] ini keys: usb_direct_depth_start (default 6, clamp min..16), usb_direct_depth_min (default 4, clamp 2..16), usb_direct_depth_window_ms (default 20000, clamp 5000..600000). Raise logic unchanged. Effective values are in the "USB Direct opened" log line.
+
+## Preview.2 cleanup
+Removed test instrumentation: MarkImageStats, the /dirty /node /range /create counters, forced QSG_INFO and the qsg_render_loop file switch, the render-loop log line. The periodic 10 s USB Direct stats logcat line is now only written when [Android] usb_direct_stats is 1 (default 0). All functional fixes are kept.

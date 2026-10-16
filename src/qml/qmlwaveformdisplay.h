@@ -146,8 +146,6 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
   protected:
     QSGNode* updatePaintNode(QSGNode* old, QQuickItem::UpdatePaintNodeData*) override;
     void geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) override;
-    void releaseResources() override;
-    void itemChange(QQuickItem::ItemChange change, const QQuickItem::ItemChangeData& value) override;
   private slots:
     void slotTrackLoaded(TrackPointer pLoadedTrack);
     void slotTrackLoading(TrackPointer pNewTrack, TrackPointer pOldTrack);
@@ -207,7 +205,6 @@ class QmlWaveformDisplay : public QQuickItem, VSyncTimeProvider, public Waveform
     Q_DECLARE_FLAGS(DirtyFlags, DirtyFlag)
 
     DirtyFlags m_dirtyFlag{DirtyFlag::None};
-    void noteNodeReason(const char* reason);
     // Root paint node returned to Qt and its background child (render thread only); null when Qt owns none.
     QSGClipNode* m_pClipNode{nullptr};
     QSGSimpleRectNode* m_pBgNode{nullptr};

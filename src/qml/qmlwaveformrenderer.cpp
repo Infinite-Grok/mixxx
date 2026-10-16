@@ -357,8 +357,6 @@ QmlWaveformRendererFactory::Renderer QmlWaveformRendererMark::create(
     VERIFY_OR_DEBUG_ASSERT(!!m_untilMark) {
         return QmlWaveformRendererFactory::Renderer{};
     }
-    // Label for the I6b stats: mark construction calls setBaseColor().
-    MarkImageStats::Scope statsScope(waveformWidget->getGroup() + QStringLiteral("/create"));
     auto pRenderer = std::make_unique<allshader::WaveformRenderMark>(waveformWidget,
             ::WaveformRendererAbstract::Play);
 

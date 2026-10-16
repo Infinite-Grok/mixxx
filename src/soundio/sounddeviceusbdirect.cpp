@@ -344,6 +344,8 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
         options.depthWindowMs = static_cast<unsigned>(
                 std::clamp(cfgInt("usb_direct_depth_window_ms", 20000), 5000, 600000));
     }
+    // Periodic 10 s logcat stats line: off unless [Android] usb_direct_stats 1.
+    m_logPeriodicStats = m_pConfig->getValue(ConfigKey(QStringLiteral("[Android]"), QStringLiteral("usb_direct_stats")), 0) != 0;
     m_pOut = std::make_unique<usbdirect::UsbAudioOut>(options);
 
     std::vector<unsigned char> raw;
@@ -403,7 +405,9 @@ SoundDeviceStatus SoundDeviceUsbDirect::open(bool isClkRefDevice, int) {
                 if (++pDevice->m_statsTick >= kStatsEveryTicks) {
                     pDevice->m_statsTick = 0;
                     pDevice->isolationTick();
-                    pDevice->logStats("periodic");
+                    if (pDevice->m_logPeriodicStats) {
+                        pDevice->logStats("periodic");
+                    }
                 }
                 const usbdirect::Halt reason = pDevice->m_pOut->stats().reason;
                 if (reason != usbdirect::Halt::None && reason != usbdirect::Halt::UserStop) {

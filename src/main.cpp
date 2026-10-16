@@ -1,6 +1,5 @@
 #include <QApplication>
 #include <QDir>
-#include <QFile>
 #include <QPixmapCache>
 #include <QString>
 #include <QStringList>
@@ -199,47 +198,6 @@ void applyStyleOverride(CmdlineArgs* pArgs) {
 } // anonymous namespace
 
 #ifdef Q_OS_ANDROID
-namespace {
-// Test build (I6b): Qt Quick render loop diagnostics and override. Must run
-// before the QGuiApplication exists, Qt reads QSG_RENDER_LOOP / QSG_INFO when
-// the first QQuickWindow picks its render loop.
-void applyAndroidRenderLoopTestSwitch() {
-    if (!qEnvironmentVariableIsSet("QSG_INFO")) {
-        // Makes Qt log "threaded render loop" / "basic render loop" and the
-        // graphics API at startup (category qt.scenegraph.general).
-        qputenv("QSG_INFO", "1");
-    }
-    // The package name is the process name of an Android app.
-    QFile cmdline(QStringLiteral("/proc/self/cmdline"));
-    if (!cmdline.open(QIODevice::ReadOnly)) {
-        return;
-    }
-    const QString pkg = QString::fromUtf8(cmdline.readAll()).section(QChar(0), 0, 0);
-    if (pkg.isEmpty()) {
-        return;
-    }
-    const QStringList dirs = {
-            QStringLiteral("/data/user/0/%1/files").arg(pkg),
-            QStringLiteral("/data/data/%1/files").arg(pkg)};
-    for (const QString& dir : dirs) {
-        QFile f(dir + QStringLiteral("/qsg_render_loop"));
-        if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
-            continue;
-        }
-        const QByteArray word = f.readAll().trimmed();
-        if (word == "threaded" || word == "basic") {
-            qputenv("QSG_RENDER_LOOP", word);
-            qInfo() << "qsg_render_loop file" << f.fileName() << "sets QSG_RENDER_LOOP =" << word;
-        } else {
-            qWarning() << "qsg_render_loop file" << f.fileName() << "has unknown content" << word;
-        }
-        return;
-    }
-}
-} // namespace
-#endif
-
-#ifdef Q_OS_ANDROID
   // Currently, accessibility properties are not set, leading to a warning spam in
   // the android logcat. Furthermore, there seems to be a few issues with the default setup,
   // which leads to huge performance loss and occasional random crash.
@@ -323,10 +281,6 @@ int main(int argc, char * argv[]) {
 #endif
 
     adjustScaleFactor(&args);
-
-#ifdef Q_OS_ANDROID
-    applyAndroidRenderLoopTestSwitch();
-#endif
 
     MixxxApplication app(argc, argv);
 

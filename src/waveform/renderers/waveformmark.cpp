@@ -332,7 +332,7 @@ void WaveformMark::setBaseColor(QColor baseColor, int dimBrightThreshold) {
             QColor(0, 0, 0, 255),
             dimBrightThreshold);
 
-    setNeedsImageUpdate(MarkImageStats::Color);
+    setNeedsImageUpdate();
 }
 
 bool WaveformMark::lineHovered(QPoint point, Qt::Orientation orientation) const {

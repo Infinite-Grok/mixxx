@@ -43,7 +43,6 @@ class allshader::WaveformRenderMarkRange final : public ::WaveformRendererAbstra
         QVector2D rb;
         bool initialized;
     };
-    void noteRangeNode(const char* what) const;
 
     std::vector<WaveformMarkRange> m_markRanges;
     // One persistent node per entry of m_markRanges (same index); children of this node.

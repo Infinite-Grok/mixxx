@@ -100,6 +100,7 @@ class SoundDeviceUsbDirect : public SoundDevice {
     QPointer<QTimer> m_pHaltTimer; // main-thread poll of the transport halt reason
     QElapsedTimer m_statsElapsed;
     int m_statsTick = 0;
+    bool m_logPeriodicStats = false;
     std::atomic<bool> m_halted{false};
     std::atomic<bool> m_haltNotified{false};
     std::atomic<bool> m_renderInit{false};
