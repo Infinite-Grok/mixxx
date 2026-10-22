@@ -423,7 +423,11 @@ void QmlWaveformDisplay::requestUpdateAtFrameRate() {
 
     const qint64 elapsedMicros = m_frameRequestTimer.nsecsElapsed() / 1000;
     const qint64 intervalMicros = m_syncInterval.count();
-    if (elapsedMicros >= intervalMicros) {
+    // When the target rate is about the display's vsync rate, this runs right after a swap and elapsedMicros lands
+    // within microseconds of intervalMicros. Without a tolerance it randomly falls just short, waits a further
+    // millisecond on the timer, misses the vsync and shows the frame one vsync late (judder). Request the frame
+    // now and let vsync pace it.
+    if (elapsedMicros + intervalMicros / 4 >= intervalMicros) {
         m_frameRateTimer.stop();
         m_frameRequestTimer.restart();
         update();
