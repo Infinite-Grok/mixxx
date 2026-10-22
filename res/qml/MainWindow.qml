@@ -730,7 +730,9 @@ Item {
                 Loader {
                     id: library
 
+                    // Build the library off the click frame so the page switch stays responsive.
                     active: root.maximizeLibrary || root.height - mixer.height >= 400
+                    asynchronous: true
                     width: parent.width
 
                     sourceComponent: Component {

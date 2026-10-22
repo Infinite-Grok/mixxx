@@ -1,6 +1,6 @@
 import "." as Skin
 import Mixxx 1.0 as Mixxx
-import QtQuick 2.12
+import QtQuick 2.15
 
 Skin.Fader {
     id: root
@@ -8,7 +8,15 @@ Skin.Fader {
     required property string group
     required property string key
 
-    value: control.parameter
+    // Do not push control updates (sync, MIDI) into the handle mid-drag: they
+    // fight the finger and make the slider look dead. The handle re-syncs on release.
+    Binding {
+        restoreMode: Binding.RestoreNone
+        target: root
+        property: "value"
+        value: control.parameter
+        when: !root.pressed
+    }
 
     onMoved: function (value) {
         control.parameter = value;
