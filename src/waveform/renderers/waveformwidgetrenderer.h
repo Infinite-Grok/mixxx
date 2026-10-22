@@ -288,5 +288,8 @@ private:
 
     bool m_passthroughEnabled;
     double m_pos[2];
+    // Last position reported by VisualPlayPosition, reused for a frame when it reports none.
+    double m_lastTruePos[2]{0.0, 0.0};
+    bool m_hasLastTruePos{false};
     double m_truePosSample[2];
 };

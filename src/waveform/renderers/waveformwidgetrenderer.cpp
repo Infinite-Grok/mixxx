@@ -178,9 +178,18 @@ void WaveformWidgetRenderer::onPreRender(VSyncTimeProvider* vsyncThread) {
     }
 
     double truePos[2]{0};
-    m_visualPlayPosition->getPlaySlipAtNextVSync(vsyncThread,
-            truePos + ::WaveformRendererAbstract::Play,
-            truePos + ::WaveformRendererAbstract::Slip);
+    if (m_visualPlayPosition->getPlaySlipAtNextVSync(vsyncThread,
+                truePos + ::WaveformRendererAbstract::Play,
+                truePos + ::WaveformRendererAbstract::Slip)) {
+        m_lastTruePos[::WaveformRendererAbstract::Play] = truePos[::WaveformRendererAbstract::Play];
+        m_lastTruePos[::WaveformRendererAbstract::Slip] = truePos[::WaveformRendererAbstract::Slip];
+        m_hasLastTruePos = true;
+    } else if (m_hasLastTruePos) {
+        // No usable position buffer for this frame (outdated vsync estimate). Leaving truePos at 0 would draw
+        // this one frame at the start of the track, which shows up as a flash of the start cue and pre-roll.
+        truePos[::WaveformRendererAbstract::Play] = m_lastTruePos[::WaveformRendererAbstract::Play];
+        truePos[::WaveformRendererAbstract::Slip] = m_lastTruePos[::WaveformRendererAbstract::Slip];
+    }
     // truePlayPos = -1 happens, when a new track is in buffer but m_visualPlayPosition was not updated
 
     if (m_audioSamplePerPixel > 0) {
@@ -460,6 +469,7 @@ void WaveformWidgetRenderer::setTrack(TrackPointer track) {
     m_pTrack = track;
     //used to postpone first display until track sample is actually available
     m_trackSamples = -1.0;
+    m_hasLastTruePos = false;
 
     for (int i = 0; i < m_rendererStack.size(); ++i) {
         m_rendererStack[i]->onSetTrack();
