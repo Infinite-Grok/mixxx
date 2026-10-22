@@ -53,6 +53,8 @@ Rectangle {
 
         anchors.fill: parent
         drag.target: root
+        // Whole-item Drag.Automatic is a desktop feature; on touch a swipe over the background starts a system drag.
+        enabled: Qt.platform.os !== "android"
     }
     Item {
         id: summary
