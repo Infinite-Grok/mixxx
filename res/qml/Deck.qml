@@ -669,8 +669,21 @@ Item {
         property var beginDrag: null
         property var disposition: GridLayout.TopToBottom
         property alias editOverlay: overlay
+        // On Android, keep the content once shown: the Library button swaps the full and minimized layouts, and
+        // rebuilding/destroying all their items on each press froze the UI for 150-300 ms.
+        property bool everVisible: false
+        readonly property bool keepAlive: Qt.platform.os === "android"
         property var move: null
         property bool selected: false
+
+        Component.onCompleted: {
+            if (visible)
+                everVisible = true;
+        }
+        onVisibleChanged: {
+            if (visible)
+                everVisible = true;
+        }
 
         function complete() {
             if (item.move) {
@@ -749,7 +762,7 @@ Item {
 
         Repeater {
             delegate: deckItemDelegate
-            model: parent.visible ? items : []
+            model: (parent.visible || (parent.keepAlive && parent.everVisible)) ? items : []
         }
         Rectangle {
             id: overlay
@@ -775,8 +788,20 @@ Item {
         default property var contentChildren
         property alias editLabel: labelItem
         property alias editOverlay: overlayItem
+        // See LayoutContainer: keep the content once shown on Android.
+        property bool everVisible: false
         property alias innerItem: content
+        readonly property bool keepAlive: Qt.platform.os === "android"
         property var move: null
+
+        Component.onCompleted: {
+            if (visible)
+                everVisible = true;
+        }
+        onVisibleChanged: {
+            if (visible)
+                everVisible = true;
+        }
 
         function complete() {
             if (layoutItem.move) {
@@ -823,7 +848,7 @@ Item {
         Loader {
             id: content
 
-            active: layoutItem.visible
+            active: layoutItem.visible || (layoutItem.keepAlive && layoutItem.everVisible)
             anchors.fill: layoutItem
 
             sourceComponent: Component {
