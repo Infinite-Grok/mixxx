@@ -470,6 +470,8 @@ Item {
                     minimized: root.maximizeLibrary
 
                     Behavior on height {
+                        // A damped spring re-lays out a whole deck on every step; on Android that stalls the UI for 150-600 ms.
+                        enabled: Qt.platform.os !== "android"
                         SpringAnimation {
                             id: deck1HeightAnimation
 
@@ -509,6 +511,8 @@ Item {
                     visible: !root.maximizeLibrary
 
                     Behavior on height {
+                        // A damped spring re-lays out a whole deck on every step; on Android that stalls the UI for 150-600 ms.
+                        enabled: Qt.platform.os !== "android"
                         SpringAnimation {
                             id: mixerHeightAnimation
 
@@ -593,6 +597,8 @@ Item {
                     minimized: root.maximizeLibrary
 
                     Behavior on height {
+                        // A damped spring re-lays out a whole deck on every step; on Android that stalls the UI for 150-600 ms.
+                        enabled: Qt.platform.os !== "android"
                         SpringAnimation {
                             id: deck2HeightAnimation
 
@@ -631,6 +637,8 @@ Item {
                     height: active ? (root.maximizeLibrary ? 80 : mixer.height / 2) : 0
 
                     Behavior on height {
+                        // A damped spring re-lays out a whole deck on every step; on Android that stalls the UI for 150-600 ms.
+                        enabled: Qt.platform.os !== "android"
                         SpringAnimation {
                             id: deck3HeightAnimation
 
@@ -674,6 +682,8 @@ Item {
                     height: active ? (root.maximizeLibrary ? 80 : mixer.height / 2) : 0
 
                     Behavior on height {
+                        // A damped spring re-lays out a whole deck on every step; on Android that stalls the UI for 150-600 ms.
+                        enabled: Qt.platform.os !== "android"
                         SpringAnimation {
                             id: deck4HeightAnimation
 
