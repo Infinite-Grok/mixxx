@@ -70,6 +70,8 @@ Item {
         width: spinner.width / 2 - 10
 
         Behavior on height {
+            // Follows the deck size, so a deck resize would spring this for 500 ms; skip that on Android.
+            enabled: Qt.platform.os !== "android"
             SpringAnimation {
                 id: heightAnimation
 
