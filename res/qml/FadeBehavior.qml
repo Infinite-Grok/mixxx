@@ -6,6 +6,9 @@ Behavior {
     // Starting with QtQuick 2.15, we can use targetProperty.object here
     property Item fadeTarget
 
+    // The 150+150 ms fades force offscreen opacity renders of large subtrees; skip them on Android.
+    enabled: Qt.platform.os !== "android"
+
     SequentialAnimation {
         // If the opacity is 1, animate it down to 0
         NumberAnimation {
