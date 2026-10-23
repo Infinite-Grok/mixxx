@@ -1,4 +1,4 @@
-import QtQuick 2.12
+import QtQuick 2.15
 import QtQuick.Shapes 1.12
 
 Item {
@@ -163,6 +163,9 @@ Item {
     }
     Binding {
         property: "value"
+        // Keep the dragged value on release. The default restores the pre-drag value, which
+        // races with the control binding and leaves the handle off the control's real value.
+        restoreMode: Binding.RestoreNone
         target: root
         value: dragHandler.value
         when: dragHandler.active && root.live
