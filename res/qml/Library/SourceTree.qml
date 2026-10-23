@@ -195,7 +195,8 @@ Mixxx.LibrarySourceTree {
                 tableView.loadSelectedTrackIntoNextAvailableDeck(false);
             }
             tap.onTapped: (eventPoint, button) => {
-                if (button == Qt.LeftButton) {
+                // A touch tap reports no button, so only exclude the right button (context menu).
+                if (button !== Qt.RightButton) {
                     tableView.selectionModel.selectRow(row);
                 }
             }

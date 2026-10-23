@@ -18,6 +18,8 @@ Item {
     DragHandler {
         id: dragHandler
 
+        // A touch drag here starts a system drag (album art preview) and blocks flick scrolling of the list.
+        enabled: Qt.platform.os !== "android"
         target: value
     }
     TapHandler {
