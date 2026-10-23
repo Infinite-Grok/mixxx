@@ -75,6 +75,8 @@ class VisualPlayPosition : public QObject {
     double determinePlayPosInLoopBoundries(
             const VisualPlayPositionData& data, const double& offset);
     double getEnginePlayPos();
+    // True while the deck is moving (play rate is not zero), false when paused or without data.
+    bool isMoving();
     void getTrackTime(double* pPlayPosition, double* pTempoTrackSeconds);
 
     // WARNING: Not thread safe. This function must only be called from the main

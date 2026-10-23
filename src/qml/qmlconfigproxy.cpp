@@ -393,8 +393,9 @@ void QmlConfigProxy::set_waveformDefaultZoom(double value) {
             &QmlConfigProxy::waveformDefaultZoomChanged);
 }
 #ifdef Q_OS_ANDROID
-// The phone/tablet default; an explicit [Waveform] FrameRate setting wins.
-constexpr int kDefaultWaveformFrameRate = 30;
+// Phone/tablet default: 60 so the waveform keeps up with a 60 Hz display (30 judders against it); an explicit
+// [Waveform] FrameRate setting wins.
+constexpr int kDefaultWaveformFrameRate = 60;
 #else
 constexpr int kDefaultWaveformFrameRate = 60;
 #endif

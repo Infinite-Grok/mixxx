@@ -239,6 +239,11 @@ double VisualPlayPosition::getEnginePlayPos() {
     }
 }
 
+bool VisualPlayPosition::isMoving() {
+    VisualPlayPositionData data;
+    return m_data.getAt(0, &data) && data.m_playRate != 0.0;
+}
+
 void VisualPlayPosition::getTrackTime(double* pPlayPosition, double* pTempoTrackSeconds) {
     VisualPlayPositionData data;
     if (m_data.getAt(0, &data)) {
