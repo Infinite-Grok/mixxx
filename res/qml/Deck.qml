@@ -717,6 +717,9 @@ Item {
         visible: typeof minWidth !== 'number' || root.width <= 0 || minWidth < root.width
 
         Behavior on x {
+            // Resizing a deck would spring every control for 500 ms; skip that on Android.
+            enabled: Qt.platform.os !== "android"
+
             SpringAnimation {
                 id: xAnimation
 
@@ -732,6 +735,9 @@ Item {
             }
         }
         Behavior on y {
+            // Resizing a deck would spring every control for 500 ms; skip that on Android.
+            enabled: Qt.platform.os !== "android"
+
             SpringAnimation {
                 id: yAnimation
 
@@ -815,6 +821,9 @@ Item {
         visible: typeof minWidth !== 'number' || root.width <= 0 || minWidth < root.width
 
         Behavior on x {
+            // Resizing a deck would spring every control for 500 ms; skip that on Android.
+            enabled: Qt.platform.os !== "android"
+
             SpringAnimation {
                 id: xAnimation
 
@@ -830,6 +839,9 @@ Item {
             }
         }
         Behavior on y {
+            // Resizing a deck would spring every control for 500 ms; skip that on Android.
+            enabled: Qt.platform.os !== "android"
+
             SpringAnimation {
                 id: yAnimation
 
