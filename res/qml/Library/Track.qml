@@ -53,17 +53,26 @@ Item {
                 enabled: hasCapabilities(Mixxx.LibraryTrackListModel.Capability.LoadToDeck)
                 title: qsTr("Deck")
 
-                Instantiator {
-                    model: 4
+                // Fixed items keep the order 1-4; an Instantiator inserting by index gave 1 4 2 3.
+                MenuItem {
+                    text: qsTr("Deck 1")
 
-                    delegate: MenuItem {
-                        text: qsTr("Deck %1").arg(modelData + 1)
+                    onTriggered: Mixxx.PlayerManager.getPlayer("[Channel1]").loadTrack(track)
+                }
+                MenuItem {
+                    text: qsTr("Deck 2")
 
-                        onTriggered: Mixxx.PlayerManager.getPlayer(`[Channel${modelData + 1}]`).loadTrack(track)
-                    }
+                    onTriggered: Mixxx.PlayerManager.getPlayer("[Channel2]").loadTrack(track)
+                }
+                MenuItem {
+                    text: qsTr("Deck 3")
 
-                    onObjectAdded: (index, object) => loadToDeckMenu.insertItem(index, object)
-                    onObjectRemoved: (index, object) => loadToDeckMenu.removeItem(object)
+                    onTriggered: Mixxx.PlayerManager.getPlayer("[Channel3]").loadTrack(track)
+                }
+                MenuItem {
+                    text: qsTr("Deck 4")
+
+                    onTriggered: Mixxx.PlayerManager.getPlayer("[Channel4]").loadTrack(track)
                 }
             }
             Menu {
