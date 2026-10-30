@@ -47,6 +47,7 @@ class WaveformWidgetRenderer {
             return;
         }
         m_group.clear();
+        m_hasLastTruePos = false;
         m_visualPlayPosition = value;
         init();
     }
@@ -60,6 +61,7 @@ class WaveformWidgetRenderer {
             return;
         }
         m_visualPlayPosition.reset();
+        m_hasLastTruePos = false;
         m_group = group;
         init();
     }
