@@ -165,7 +165,7 @@ Item {
         property: "value"
         // Keep the dragged value on release. The default restores the pre-drag value, which
         // races with the control binding and leaves the handle off the control's real value.
-        restoreMode: Binding.RestoreNone
+        restoreMode: Qt.platform.os === "android" ? Binding.RestoreNone : Binding.RestoreBindingOrValue
         target: root
         value: dragHandler.value
         when: dragHandler.active && root.live
