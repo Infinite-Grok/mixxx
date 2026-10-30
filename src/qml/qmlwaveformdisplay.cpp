@@ -434,7 +434,12 @@ void QmlWaveformDisplay::requestUpdateAtFrameRate() {
     // within microseconds of intervalMicros. Without a tolerance it randomly falls just short, waits a further
     // millisecond on the timer, misses the vsync and shows the frame one vsync late (judder). Request the frame
     // now and let vsync pace it.
-    if (elapsedMicros + intervalMicros / 4 >= intervalMicros) {
+#ifdef Q_OS_ANDROID
+    const qint64 earlyToleranceMicros = intervalMicros / 4;
+#else
+    const qint64 earlyToleranceMicros = 0;
+#endif
+    if (elapsedMicros + earlyToleranceMicros >= intervalMicros) {
         m_frameRateTimer.stop();
         m_frameRequestTimer.restart();
         update();
