@@ -361,7 +361,8 @@ bool QmlWaveformDisplay::drawnStateChanged() const {
     // A moving deck always needs the next frame. The engine position is only posted once per audio buffer, so at a
     // frame rate near the buffer rate roughly every other frame looked unchanged and the waveform ran at half rate.
     const auto& pRendered = WaveformWidgetRenderer::m_visualPlayPosition;
-    if (pRendered && pRendered->isMoving()) {
+    // Not in static-track mode: setStaticTrack()/setPosition() publish a play rate of 1.0 without any playback.
+    if (!m_pTrack && pRendered && pRendered->isMoving()) {
         return true;
     }
     return renderedEnginePlayPos() !=
