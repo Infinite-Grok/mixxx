@@ -135,6 +135,8 @@ Item {
         onFocusLibrarySearchRequested: {
             if (library.item) {
                 library.item.focusSearch();
+            } else if (library.active) {
+                library.focusSearchPending = true;
             }
         }
     }
@@ -742,8 +744,17 @@ Item {
 
                     // Build the library off the click frame so the page switch stays responsive.
                     active: root.maximizeLibrary || root.height - mixer.height >= 400
-                    asynchronous: true
+                    asynchronous: Qt.platform.os === "android"
+                    // A focus request that arrives before the async load finishes is replayed from onLoaded.
+                    property bool focusSearchPending: false
                     width: parent.width
+
+                    onLoaded: {
+                        if (focusSearchPending) {
+                            focusSearchPending = false;
+                            item.focusSearch();
+                        }
+                    }
 
                     sourceComponent: Component {
                         Skin.Library {
