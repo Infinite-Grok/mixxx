@@ -186,6 +186,7 @@ Mixxx.LibrarySourceTree {
                 if (transition != PointerDevice.GrabPassive && transition != PointerDevice.GrabExclusive) {
                     return;
                 }
+                parent.dragPreviewActive = true;
                 parent.dragImage.grabToImage(result => {
                     parent.Drag.imageSource = result.url;
                 }, Qt.size(parent.dragImage.width, parent.dragImage.height));
