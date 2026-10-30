@@ -908,6 +908,19 @@ Item {
     component LayoutMouseArea: MouseArea {
         property Item target: parent
 
+        // Shared by onReleased and onCanceled; safe to call twice.
+        function endGesture() {
+            if (target.beginDrag) {
+                target.x = target.beginDrag.x;
+                target.y = target.beginDrag.y;
+                target.beginDrag = null;
+                // The x/y Behaviors are disabled on Android, so no animation will end to commit the pending move.
+                // complete() is a no-op without a pending move.
+                if (Qt.platform.os === "android")
+                    target.complete();
+            }
+            target.z = 1;
+        }
         function selectParent() {
             let currentParent = target.parent;
             while (currentParent != root) {
@@ -944,20 +957,12 @@ Item {
             }
             target.z = 100;
         }
+        onCanceled: endGesture()
         onReleased: event => {
-            if (target.beginDrag) {
-                target.x = target.beginDrag.x;
-                target.y = target.beginDrag.y;
-                target.beginDrag = null;
-                // The x/y Behaviors are disabled on Android, so no animation will end to commit the pending move.
-                if (Qt.platform.os === "android")
-                    target.complete();
-            }
+            endGesture();
             if (!(event.modifiers & Qt.ControlModifier) && target.selected) {
                 target.selected = false;
             }
-
-            target.z = 1;
         }
     }
 }
