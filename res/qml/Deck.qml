@@ -949,6 +949,9 @@ Item {
                 target.x = target.beginDrag.x;
                 target.y = target.beginDrag.y;
                 target.beginDrag = null;
+                // The x/y Behaviors are disabled on Android, so no animation will end to commit the pending move.
+                if (Qt.platform.os === "android")
+                    target.complete();
             }
             if (!(event.modifiers & Qt.ControlModifier) && target.selected) {
                 target.selected = false;
