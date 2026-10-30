@@ -692,6 +692,11 @@ Item {
             item.move = null;
         }
         function updateOverlayPosition() {
+            // The overlays are only visible in edit mode; on Android skip the recursive geometry sync otherwise
+            // (it ran for every container on each layout change, e.g. the Library button). Entering edit mode
+            // triggers a full refresh, see the Connections below.
+            if (Qt.platform.os === "android" && !root.editMode)
+                return;
             let updatedRecursive;
             let updatedItem = item => {
                 if (typeof item.selected !== "boolean")
@@ -766,6 +771,14 @@ Item {
             updateOverlayPosition();
         }
 
+        Connections {
+            function onEditModeChanged() {
+                if (Qt.platform.os === "android" && root.editMode)
+                    item.updateOverlayPosition();
+            }
+
+            target: root
+        }
         Repeater {
             delegate: deckItemDelegate
             model: (parent.visible || (parent.keepAlive && parent.everVisible)) ? items : []
