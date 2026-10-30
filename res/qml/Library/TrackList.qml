@@ -157,9 +157,119 @@ Rectangle {
             }
         }
     }
+    // Cell wrapper of the track table. An inline component, so the Android DelegateChooser below can make one
+    // delegate per column from it.
+    component TrackCell: Item {
+        id: item
+
+        required property int column
+        required property url cover_art
+        required property color decoration
+        required property var display
+        required property string file_url
+        required property int row
+        required property bool selected
+        required property var track
+        readonly property var tableView: TableView.view
+
+        implicitHeight: 30
+
+        Loader {
+            id: loader
+
+            property var capabilities: item.tableView && item.tableView.model ? item.tableView.model.getCapabilities() : Mixxx.LibraryTrackListModel.Capability.None
+            property url cover_art: item.cover_art
+            property color decoration: item.decoration
+            property var display: item.display
+            property url file_url: item.file_url
+            property int row: item.row
+            property bool selected: item.selected
+            property var tableView: item.tableView
+            property var track: item.track
+
+            anchors.fill: parent
+            focus: true
+            sourceComponent: delegate
+
+            onLoaded:
+            // Workaround needed for WaveformOverview column to load the data
+            //     if (track)
+            //         Mixxx.Library.analyze(track)
+            {}
+        }
+        // Workaround needed for WaveformOverview column to load the data
+        // TableView.onReused: {
+        //     if (track)
+        //         Mixxx.Library.analyze(track)
+        // }
+    }
     TableView {
         id: view
 
+        // Android: one delegate component per column. TableView only reuses a pooled item for a cell made from the
+        // same delegate component, so a pooled wrapper never moves to another column, where its Loader would swap
+        // sourceComponent and build a new Cell. Covers the 9 columns of SourceTree.qml defaultColumns, further
+        // columns share the last choice.
+        property Component androidCellChooser: DelegateChooser {
+            DelegateChoice {
+                column: 0
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 1
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 2
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 3
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 4
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 5
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 6
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 7
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                column: 8
+
+                TrackCell {
+                }
+            }
+            DelegateChoice {
+                TrackCell {
+                }
+            }
+        }
         property int dynamicColumnCount: 0
         // Android: the TableView is not resized when the library area changes height (LIBRARY toggle). It keeps the
         // tallest height it got since the last width change, root clips it (Library.qml sets clip) and bottomMargin
@@ -167,6 +277,8 @@ Rectangle {
         // hidden (cover column autoHideWidth), forceLayout() reloads every visible cell (Qt 6.10
         // checkForVisibilityChanges()), which made every toggle rebuild the whole viewport.
         property real keptHeight: 0
+        property Component trackCell: TrackCell {
+        }
         property int usedWidth: 0
         readonly property real visibleHeight: Math.max(0, root.height - anchors.margins - y)
 
@@ -234,48 +346,7 @@ Rectangle {
             // Android uses androidScrollBar, sized to the visible part of the view.
             visible: Qt.platform.os !== "android"
         }
-        delegate: Item {
-            id: item
-
-            required property url cover_art
-            required property color decoration
-            required property var display
-            required property string file_url
-            required property int row
-            required property bool selected
-            required property var track
-
-            implicitHeight: 30
-
-            Loader {
-                id: loader
-
-                property var capabilities: root.model ? root.model.getCapabilities() : Mixxx.LibraryTrackListModel.Capability.None
-                property url cover_art: item.cover_art
-                property color decoration: item.decoration
-                property var display: item.display
-                property url file_url: item.file_url
-                property int row: item.row
-                property bool selected: item.selected
-                property var tableView: view
-                property var track: item.track
-
-                anchors.fill: parent
-                focus: true
-                sourceComponent: delegate
-
-                onLoaded:
-                // Workaround needed for WaveformOverview column to load the data
-                //     if (track)
-                //         Mixxx.Library.analyze(track)
-                {}
-            }
-            // Workaround needed for WaveformOverview column to load the data
-            // TableView.onReused: {
-            //     if (track)
-            //         Mixxx.Library.analyze(track)
-            // }
-        }
+        delegate: Qt.platform.os === "android" ? androidCellChooser : trackCell
         selectionModel: ItemSelectionModel {
             function moveSelectionVertical(value) {
                 if (value == 0)
