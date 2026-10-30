@@ -749,6 +749,10 @@ Item {
                     property bool focusSearchPending: false
                     width: parent.width
 
+                    onActiveChanged: {
+                        if (!active)
+                            focusSearchPending = false;
+                    }
                     onLoaded: {
                         if (focusSearchPending) {
                             focusSearchPending = false;
