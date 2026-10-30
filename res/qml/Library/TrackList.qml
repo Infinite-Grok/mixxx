@@ -161,7 +161,14 @@ Rectangle {
         id: view
 
         property int dynamicColumnCount: 0
+        // Android: the TableView is not resized when the library area changes height (LIBRARY toggle). It keeps the
+        // tallest height it got since the last width change, root clips it (Library.qml sets clip) and bottomMargin
+        // keeps the last rows reachable. Each TableView resize drains the reuse pool and, while a leading column is
+        // hidden (cover column autoHideWidth), forceLayout() reloads every visible cell (Qt 6.10
+        // checkForVisibilityChanges()), which made every toggle rebuild the whole viewport.
+        property real keptHeight: 0
         property int usedWidth: 0
+        readonly property real visibleHeight: Math.max(0, root.height - anchors.margins - y)
 
         function loadSelectedTrack(group, play) {
             const urls = this.selectionModel.selectedTrackUrls();
@@ -197,7 +204,7 @@ Rectangle {
             return oldDynamicColumnCount != dynamicColumnCount || oldUsedWidth != usedWidth;
         }
 
-        anchors.bottom: parent.bottom
+        anchors.bottom: Qt.platform.os === "android" ? undefined : parent.bottom
         anchors.left: parent.left
         anchors.margins: 5
         anchors.right: parent.right
@@ -224,6 +231,8 @@ Rectangle {
 
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AlwaysOn
+            // Android uses androidScrollBar, sized to the visible part of the view.
+            visible: Qt.platform.os !== "android"
         }
         delegate: Item {
             id: item
@@ -301,11 +310,65 @@ Rectangle {
         Keys.onReturnPressed: this.loadSelectedTrackIntoNextAvailableDeck(false)
         Keys.onUpPressed: this.selectionModel.moveSelectionVertical(-1)
         onModelChanged: this.updateColumnSize()
+        onVisibleHeightChanged: {
+            if (Qt.platform.os !== "android")
+                return;
+            if (visibleHeight > keptHeight)
+                keptHeight = visibleHeight;
+            // The visible area grew while scrolled to the end: pull the last row back to the visible bottom.
+            const maxContentY = originY + Math.max(0, contentHeight - visibleHeight);
+            if (contentY > maxContentY)
+                contentY = maxContentY;
+        }
         onWidthChanged: {
+            if (Qt.platform.os === "android") {
+                // A width change re-lays out the table anyway (rotation, fold): drop the kept height there.
+                keptHeight = visibleHeight;
+            }
             if (view.updateColumnSize()) {
                 // forceLayout is costly - only invoke if there was a change in the column layouts
                 view.forceLayout();
             }
+        }
+        Binding {
+            property: "height"
+            target: view
+            value: Math.max(view.keptHeight, view.visibleHeight)
+            when: Qt.platform.os === "android"
+        }
+        Binding {
+            property: "bottomMargin"
+            target: view
+            value: view.height - view.visibleHeight
+            when: Qt.platform.os === "android"
+        }
+    }
+    // Android: keeps the bottom margin strip empty now that the taller view reaches into it (root clips below).
+    Rectangle {
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        color: root.color
+        height: view.anchors.margins
+        visible: Qt.platform.os === "android"
+    }
+    // Android: the view is taller than its visible part (see TableView.keptHeight), so the attached scroll bar
+    // would be sized and positioned for the hidden part too.
+    ScrollBar {
+        id: androidScrollBar
+
+        anchors.right: view.right
+        anchors.top: view.top
+        height: view.visibleHeight
+        orientation: Qt.Vertical
+        policy: ScrollBar.AlwaysOn
+        position: view.contentHeight > 0 ? (view.contentY - view.originY) / view.contentHeight : 0
+        size: view.contentHeight > 0 ? Math.min(1, view.visibleHeight / view.contentHeight) : 1
+        visible: Qt.platform.os === "android"
+
+        onPositionChanged: {
+            if (pressed)
+                view.contentY = view.originY + position * view.contentHeight;
         }
     }
 }
