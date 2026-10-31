@@ -270,6 +270,9 @@ Rectangle {
                 }
             }
         }
+        // Android: fixed row height of the track table (TrackCell.implicitHeight), used to place rows without
+        // loaded items.
+        readonly property real androidRowHeight: 30
         property int dynamicColumnCount: 0
         // Android: the TableView is not resized when the library area changes height (LIBRARY toggle). It keeps the
         // tallest height it got since the last width change, root clips it (Library.qml sets clip) and bottomMargin
@@ -277,6 +280,7 @@ Rectangle {
         // hidden (cover column autoHideWidth), forceLayout() reloads every visible cell (Qt 6.10
         // checkForVisibilityChanges()), which made every toggle rebuild the whole viewport.
         property real keptHeight: 0
+        property real lastVisibleHeight: 0
         property Component trackCell: TrackCell {
         }
         property int usedWidth: 0
@@ -297,24 +301,27 @@ Rectangle {
             Mixxx.PlayerManager.loadLocationUrlIntoNextAvailableDeck(urls[0], play);
         }
         // Android: the view is taller than its visible part, so TableView.Contain treats rows below the clip as
-        // visible. Scroll so that the row's bottom edge ends up inside the visible (clipped) area.
+        // visible. Rows have a fixed height (androidRowHeight), so the row position is computed from its index and
+        // contentY is set directly, without relying on loaded items or positionViewAtRow() (not animated, see
+        // animate). The header is a sibling above the view, so the visible window is [contentY, contentY + visibleHeight].
         function scrollRowIntoVisibleArea(row) {
-            let item = null;
-            for (let c = 0; c < columns && !item; c++) {
-                if (columnWidthProvider(c) > 0)
-                    item = itemAtCell(Qt.point(c, row));
-            }
-            if (!item)
+            const rowCount = model ? model.rowCount() : 0;
+            if (row < 0 || row >= rowCount || visibleHeight <= 0)
                 return;
-            const rowTop = item.y;
-            const rowBottom = item.y + item.height;
-            const maxContentY = originY + Math.max(0, contentHeight - visibleHeight);
+            const step = androidRowHeight + rowSpacing;
+            const rowTop = originY + row * step;
+            const rowBottom = rowTop + androidRowHeight;
+            const maxContentY = originY + Math.max(0, rowCount * step - rowSpacing - visibleHeight);
             let target = contentY;
-            if (rowBottom > contentY + visibleHeight)
-                target = rowBottom - visibleHeight;
             if (rowTop < target)
                 target = rowTop;
-            contentY = Math.max(originY, Math.min(maxContentY, target));
+            else if (rowBottom > target + visibleHeight)
+                target = rowBottom - visibleHeight;
+            target = Math.max(originY, Math.min(maxContentY, target));
+            if (target === contentY)
+                return;
+            cancelFlick();
+            contentY = target;
         }
         function updateColumnSize() {
             const oldUsedWidth = usedWidth;
@@ -336,6 +343,8 @@ Rectangle {
             return oldDynamicColumnCount != dynamicColumnCount || oldUsedWidth != usedWidth;
         }
 
+        // Android: scrolling to the selected row sets contentY directly, a positioning animation would overwrite it.
+        animate: Qt.platform.os !== "android"
         anchors.bottom: Qt.platform.os === "android" ? undefined : parent.bottom
         anchors.left: parent.left
         anchors.margins: 5
@@ -384,9 +393,10 @@ Rectangle {
                 }
                 const newRow = Mixxx.MathUtils.positiveModulo(row, rowCount);
                 this.select(this.model.index(newRow, 0), ItemSelectionModel.Rows | ItemSelectionModel.Select | ItemSelectionModel.Clear | ItemSelectionModel.Current);
-                view.positionViewAtRow(newRow, TableView.Contain);
                 if (Qt.platform.os === "android")
                     view.scrollRowIntoVisibleArea(newRow);
+                else
+                    view.positionViewAtRow(newRow, TableView.Contain);
             }
             function selectedTrackUrls() {
                 return this.selectedIndexes.map(index => {
@@ -412,6 +422,14 @@ Rectangle {
             const maxContentY = originY + Math.max(0, contentHeight - visibleHeight);
             if (contentY > maxContentY)
                 contentY = maxContentY;
+            // The visible area shrank (restore): keep the selected row inside it if it was visible before.
+            const selected = selectionModel.selectedIndexes;
+            if (selected.length > 0 && visibleHeight < lastVisibleHeight) {
+                const rowTop = originY + selected[0].row * (androidRowHeight + rowSpacing);
+                if (rowTop >= contentY && rowTop + androidRowHeight <= contentY + lastVisibleHeight)
+                    scrollRowIntoVisibleArea(selected[0].row);
+            }
+            lastVisibleHeight = visibleHeight;
         }
         onWidthChanged: {
             if (Qt.platform.os === "android") {
@@ -427,6 +445,14 @@ Rectangle {
             property: "height"
             target: view
             value: Math.max(view.keptHeight, view.visibleHeight)
+            when: Qt.platform.os === "android"
+        }
+        Binding {
+            property: "rowHeightProvider"
+            target: view
+            value: function (row) {
+                return view.androidRowHeight;
+            }
             when: Qt.platform.os === "android"
         }
         Binding {
