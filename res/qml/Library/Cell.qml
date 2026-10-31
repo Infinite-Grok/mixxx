@@ -107,7 +107,10 @@ Rectangle {
         id: dragLoader
 
         active: root.dragPreviewActive
-        sourceComponent: DragPreview
+        sourceComponent: Component {
+            DragPreview {
+            }
+        }
     }
     Rectangle {
         id: border
