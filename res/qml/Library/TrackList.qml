@@ -296,6 +296,26 @@ Rectangle {
 
             Mixxx.PlayerManager.loadLocationUrlIntoNextAvailableDeck(urls[0], play);
         }
+        // Android: the view is taller than its visible part, so TableView.Contain treats rows below the clip as
+        // visible. Scroll so that the row's bottom edge ends up inside the visible (clipped) area.
+        function scrollRowIntoVisibleArea(row) {
+            let item = null;
+            for (let c = 0; c < columns && !item; c++) {
+                if (columnWidthProvider(c) > 0)
+                    item = itemAtCell(Qt.point(c, row));
+            }
+            if (!item)
+                return;
+            const rowTop = item.y;
+            const rowBottom = item.y + item.height;
+            const maxContentY = originY + Math.max(0, contentHeight - visibleHeight);
+            let target = contentY;
+            if (rowBottom > contentY + visibleHeight)
+                target = rowBottom - visibleHeight;
+            if (rowTop < target)
+                target = rowTop;
+            contentY = Math.max(originY, Math.min(maxContentY, target));
+        }
         function updateColumnSize() {
             const oldUsedWidth = usedWidth;
             const oldDynamicColumnCount = dynamicColumnCount;
@@ -365,6 +385,8 @@ Rectangle {
                 const newRow = Mixxx.MathUtils.positiveModulo(row, rowCount);
                 this.select(this.model.index(newRow, 0), ItemSelectionModel.Rows | ItemSelectionModel.Select | ItemSelectionModel.Clear | ItemSelectionModel.Current);
                 view.positionViewAtRow(newRow, TableView.Contain);
+                if (Qt.platform.os === "android")
+                    view.scrollRowIntoVisibleArea(newRow);
             }
             function selectedTrackUrls() {
                 return this.selectedIndexes.map(index => {
